@@ -64,6 +64,8 @@ import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { createMachines } from './machines.js';
 import { createEvmChart, scenario, fmt } from './evm.js';
 import { createSheet, createBackdrop } from './sheet.js';
+import { t } from './i18n.js';
+document.getElementById('note').textContent = t('Örnek senaryo · temsilî değerler', 'Sample scenario · illustrative values');
 
 // ?embed: driven by the landing page (no own controls, progress set from outside); ?lite: lighter rendering for phones.
 const QS = new URLSearchParams(location.search);
@@ -475,8 +477,8 @@ const chart = createEvmChart(SC, {
   origin: new THREE.Vector3(RWY.x0 + 6, 0.7, RWY.z), axis: new THREE.Vector3(1, 0, 0), len: RWY.x1 - RWY.x0 - 12, height: 34,
   columns: false, ac: false, es: true,
   kpis: [
-    { name: 'SPI(t)', value: fmt(SC.spiT), sub: 'zamana dayalı takvim performansı', m: 18.5, v: 40 },
-    { name: 'Gecikme', value: `${fmt(SC.today - SC.es, 1)} ay`, sub: 'Earned Schedule · kazanılan zaman', m: 18.5, v: 12 },
+    { name: 'SPI(t)', value: fmt(SC.spiT), sub: t('zamana dayalı takvim performansı', 'time-based schedule performance'), m: 18.5, v: 40 },
+    { name: t('Gecikme', 'Delay'), value: `${fmt(SC.today - SC.es, 1)} ${t('ay', 'months')}`, sub: t('Earned Schedule · kazanılan zaman', 'Earned Schedule · time earned'), m: 18.5, v: 12 },
   ],
   labelAt: { pv: [19, 0, 3.5], ev: [8, 0, 6] },
 });

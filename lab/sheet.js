@@ -1,11 +1,12 @@
 // Blueprint drawing sheet shown behind the EVM charts: grid paper, frames, a title block and a
 // technical drawing of the scene's project (dam section, runway plan, tower elevation), drawn on a canvas.
 import * as THREE from 'three';
+import { t, num } from './i18n.js';
 
 let W = 2048; // follows the screen's aspect (redrawn in place())
 const H = 1152;
 const INK = a => `rgba(170, 214, 255, ${a})`;
-const fmtM = v => v.toFixed(2).replace('.', ',');
+const fmtM = v => num(v);
 
 function base(ctx, kind) {
   ctx.fillStyle = 'rgba(18, 52, 112, 0.35)';
@@ -47,15 +48,15 @@ function base(ctx, kind) {
   ctx.font = '800 30px system-ui, sans-serif';
   ctx.fillText('JANUS', tx + 20, ty + 36);
   ctx.font = '600 22px system-ui, sans-serif';
-  ctx.fillText('PROJE KONTROL PAFTASI', tx + 220, ty + 34);
+  ctx.fillText(t('PROJE KONTROL PAFTASI', 'PROJECT CONTROL SHEET'), tx + 220, ty + 34);
   ctx.font = '700 26px system-ui, sans-serif';
   ctx.fillText(kind.title, tx + 20, ty + 90);
   ctx.font = '500 20px system-ui, sans-serif';
-  ctx.fillText(`Ölçek ${kind.scale}`, tx + 20, ty + 142);
-  ctx.fillText(`Pafta ${kind.sheet}`, tx + 240, ty + 142);
+  ctx.fillText(`${t('Ölçek', 'Scale')} ${kind.scale}`, tx + 20, ty + 142);
+  ctx.fillText(`${t('Pafta', 'Sheet')} ${kind.sheet}`, tx + 240, ty + 142);
   ctx.fillText('Rev. 0', tx + 450, ty + 142);
   ctx.fillStyle = INK(0.6);
-  ctx.fillText('ÖRNEK SENARYO · TEMSİLÎ ÇİZİM', tx + 20, ty + 188);
+  ctx.fillText(t('ÖRNEK SENARYO · TEMSİLÎ ÇİZİM', 'SAMPLE SCENARIO · ILLUSTRATIVE DRAWING'), tx + 20, ty + 188);
   // North arrow.
   const nx = 150, ny = 170;
   ctx.strokeStyle = INK(0.7);
@@ -138,19 +139,19 @@ const DRAW = {
     ctx.beginPath(); ctx.moveTo(ox - 560, wl[1]); ctx.lineTo(wl[0], wl[1]); ctx.stroke();
     ctx.setLineDash([]);
     ctx.beginPath(); ctx.moveTo(ox - 420, wl[1] - 4); ctx.lineTo(ox - 436, wl[1] - 26); ctx.lineTo(ox - 404, wl[1] - 26); ctx.closePath(); ctx.stroke();
-    label(ctx, 'MEMBA', ox - 540, wl[1] - 40, 20, 0.7);
-    label(ctx, 'MANSAP', ox + 330, oy - 40, 20, 0.7);
+    label(ctx, t('MEMBA', 'UPSTREAM'), ox - 540, wl[1] - 40, 20, 0.7);
+    label(ctx, t('MANSAP', 'DOWNSTREAM'), ox + 330, oy - 40, 20, 0.7);
     dim(ctx, ...P(-cw / 2, Hm), ...P(cw / 2, Hm), fmtM(cw), -40);
     dim(ctx, ...P(cw / 2 + sd * Hm, 0), ...P(cw / 2 + sd * Hm, Hm), fmtM(Hm), -60);
     dim(ctx, ...P(-(cw / 2 + su * Hm), 0), ...P(cw / 2 + sd * Hm, 0), fmtM(cw + (su + sd) * Hm), 70);
-    label(ctx, '1:1,3', ...P(-cw / 2 - su * Hm * 0.62, Hm * 0.5), 22, 0.75);
-    label(ctx, '1:1,2', ...P(cw / 2 + sd * Hm * 0.38, Hm * 0.55), 22, 0.75);
-    label(ctx, 'KİL ÇEKİRDEK', ...P(-2.4, 4), 18, 0.7);
-    label(ctx, 'A-A EN KESİT', ox - 560, oy - Hm * s - 90, 34);
+    label(ctx, t('1:1,3', '1:1.3'), ...P(-cw / 2 - su * Hm * 0.62, Hm * 0.5), 22, 0.75);
+    label(ctx, t('1:1,2', '1:1.2'), ...P(cw / 2 + sd * Hm * 0.38, Hm * 0.55), 22, 0.75);
+    label(ctx, t('KİL ÇEKİRDEK', 'CLAY CORE'), ...P(-2.4, 4), 18, 0.7);
+    label(ctx, t('A-A EN KESİT', 'SECTION A-A'), ox - 560, oy - Hm * s - 90, 34);
   },
   airport(ctx) {
     const ox = 140, oy = 860, len = 1500, wid = 96;
-    label(ctx, 'PİST VE APRON PLANI', ox, 330, 34);
+    label(ctx, t('PİST VE APRON PLANI', 'RUNWAY AND APRON PLAN'), ox, 330, 34);
     ctx.strokeStyle = INK(0.9); ctx.lineWidth = 3;
     ctx.strokeRect(ox, oy, len, wid);
     ctx.lineWidth = 3; ctx.setLineDash([40, 30]);
@@ -168,16 +169,16 @@ const DRAW = {
     const term = new Path2D(); term.rect(ox + 420, oy - 470, 640, 190);
     ctx.lineWidth = 3; ctx.stroke(term); hatch(ctx, term, 16, 0.18);
     ctx.beginPath(); ctx.arc(ox + 1240, oy - 400, 44, 0, Math.PI * 2); ctx.stroke();
-    label(ctx, 'TERMİNAL', ox + 650, oy - 365, 24, 0.8);
+    label(ctx, t('TERMİNAL', 'TERMINAL'), ox + 650, oy - 365, 24, 0.8);
     label(ctx, 'APRON', ox + 840, oy - 190, 22, 0.7);
-    label(ctx, 'KULE', ox + 1210, oy - 335, 20, 0.7);
-    label(ctx, 'TAKSİ YOLU', ox + 1085, oy - 60, 18, 0.7);
+    label(ctx, t('KULE', 'TOWER'), ox + 1210, oy - 335, 20, 0.7);
+    label(ctx, t('TAKSİ YOLU', 'TAXIWAY'), ox + 1085, oy - 60, 18, 0.7);
     dim(ctx, ox + 420, oy - 470, ox + 1060, oy - 470, '52,00', -40);
   },
   tower(ctx) {
     // Elevation: 20 floors x 3,50 m, 14 px per metre.
     const s = 11, ox = 260, oy = 1020, w = 18 * s, floors = 20, fh = 3.5;
-    label(ctx, 'GÖRÜNÜŞ', ox - 60, oy - floors * fh * s - 150, 34);
+    label(ctx, t('GÖRÜNÜŞ', 'ELEVATION'), ox - 60, oy - floors * fh * s - 150, 34);
     ctx.strokeStyle = INK(0.9); ctx.lineWidth = 3;
     ctx.strokeRect(ox, oy - floors * fh * s, w, floors * fh * s);
     ctx.lineWidth = 1.2;
@@ -194,7 +195,7 @@ const DRAW = {
     dim(ctx, ox, oy - floors * fh * s, ox + w, oy - floors * fh * s, '18,00', -40);
     // Typical floor plan.
     const px = 820, py = 620, ps = 16, pw = 18 * ps;
-    label(ctx, 'NORMAL KAT PLANI', px, py - 50, 28);
+    label(ctx, t('NORMAL KAT PLANI', 'TYPICAL FLOOR PLAN'), px, py - 50, 28);
     ctx.lineWidth = 3; ctx.strokeRect(px, py, pw, pw);
     const core = new Path2D(); core.rect(px + pw / 2 - 3 * ps, py + pw / 2 - 3 * ps, 6 * ps, 6 * ps);
     ctx.lineWidth = 2; ctx.stroke(core); hatch(ctx, core, 8, 0.4);
@@ -204,13 +205,13 @@ const DRAW = {
     for (const a of [1 / 3, 2 / 3]) { ctx.moveTo(px + a * pw, py - 30); ctx.lineTo(px + a * pw, py + pw + 30); ctx.moveTo(px - 30, py + a * pw); ctx.lineTo(px + pw + 30, py + a * pw); }
     ctx.stroke(); ctx.setLineDash([]);
     dim(ctx, px, py + pw, px + pw, py + pw, '18,00', 50);
-    label(ctx, 'ÇEKİRDEK', px + pw / 2 - 52, py + pw / 2 + 8, 18, 0.75);
+    label(ctx, t('ÇEKİRDEK', 'CORE'), px + pw / 2 - 52, py + pw / 2 + 8, 18, 0.75);
   },
 };
 const KIND = {
-  dam: { title: 'Baraj gövdesi · en kesit', scale: '1:500', sheet: '01/03', fit: 1120 },
-  airport: { title: 'Pist ve apron · vaziyet planı', scale: '1:2000', sheet: '02/03', fit: 1720 },
-  tower: { title: 'Gökdelen · görünüş ve kat planı', scale: '1:500', sheet: '03/03', fit: 1180 },
+  dam: { title: t('Baraj gövdesi · en kesit', 'Dam body · cross-section'), scale: '1:500', sheet: '01/03', fit: 1120 },
+  airport: { title: t('Pist ve apron · vaziyet planı', 'Runway and apron · site plan'), scale: '1:2000', sheet: '02/03', fit: 1720 },
+  tower: { title: t('Gökdelen · görünüş ve kat planı', 'Tower · elevation and floor plan'), scale: '1:500', sheet: '03/03', fit: 1180 },
 };
 
 export function createSheet(kind) {
@@ -254,9 +255,9 @@ export function createSheet(kind) {
 // Screen background for the blueprint look: grid paper, frame, zone marks and title block, no drawing.
 // It is used as scene.background (stretched to the screen), so it is redrawn for the screen's aspect.
 const BACKDROP = {
-  dam: { title: 'Baraj · yapım sahası', scale: '1:1000', sheet: '01/03' },
-  airport: { title: 'Havalimanı · yapım sahası', scale: '1:2500', sheet: '02/03' },
-  tower: { title: 'Gökdelen · yapım sahası', scale: '1:1000', sheet: '03/03' },
+  dam: { title: t('Baraj · yapım sahası', 'Dam · construction site'), scale: '1:1000', sheet: '01/03' },
+  airport: { title: t('Havalimanı · yapım sahası', 'Airport · construction site'), scale: '1:2500', sheet: '02/03' },
+  tower: { title: t('Gökdelen · yapım sahası', 'Tower · construction site'), scale: '1:1000', sheet: '03/03' },
 };
 export function createBackdrop(kind) {
   const canvas = document.createElement('canvas');

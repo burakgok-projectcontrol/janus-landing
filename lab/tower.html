@@ -63,6 +63,8 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 import { createMachines } from './machines.js';
 import { fmt } from './evm.js';
 import { createSheet, createBackdrop } from './sheet.js';
+import { t, pct } from './i18n.js';
+document.getElementById('note').textContent = t('Örnek senaryo · temsilî değerler', 'Sample scenario · illustrative values');
 
 // ?embed: driven by the landing page (no own controls, progress set from outside); ?lite: lighter rendering for phones.
 const QS = new URLSearchParams(location.search);
@@ -343,12 +345,12 @@ function label(html, pos, cls, at, parent = chart) {
   labels.push(o);
   return o;
 }
-label(`EV<span class="long"> · kazanılmış değer</span> %${Math.round(SCN.ev)}`, new THREE.Vector3(EV_POS.x + 3, (STACK_H * SCN.ev) / 100 + 2.2, EV_POS.z + 3), 'ev', 0.45);
-label(`AC<span class="long"> · gerçekleşen maliyet</span> %${Math.round(SCN.ac)}`, new THREE.Vector3(AC_POS.x - 3, AC_TOP + 2.2, AC_POS.z + 3), 'ac', 0.55);
-label('BAC<span class="long"> · bütçe</span> %100', new THREE.Vector3(EV_POS.x + 6, STACK_H + 1.6, EV_POS.z), 'pv', 0.62);
-label(`EAC<span class="long"> · tahmini maliyet</span> %${fmt(SCN.eac, 0)}`, new THREE.Vector3(AC_POS.x - 1, AC_TOP + EAC_H + 2.2, AC_POS.z + 3), 'ac', 0.93);
-label(`CPI <b>${fmt(SCN.cpi)}</b><span>maliyet performansı</span>`, new THREE.Vector3(-8, 38, 6), 'kpi', 0.6);
-label(`Aşım tahmini <b>%${fmt(-SCN.vac, 1)}</b><span>VAC · EAC = BAC / CPI</span>`, new THREE.Vector3(-8, 27, 6), 'kpi warn', 0.95);
+label(`EV<span class="long"> · ${t('kazanılmış değer', 'earned value')}</span> ${pct(Math.round(SCN.ev))}`, new THREE.Vector3(EV_POS.x + 3, (STACK_H * SCN.ev) / 100 + 2.2, EV_POS.z + 3), 'ev', 0.45);
+label(`AC<span class="long"> · ${t('gerçekleşen maliyet', 'actual cost')}</span> ${pct(Math.round(SCN.ac))}`, new THREE.Vector3(AC_POS.x - 3, AC_TOP + 2.2, AC_POS.z + 3), 'ac', 0.55);
+label(`BAC<span class="long"> · ${t('bütçe', 'budget')}</span> ${pct(100)}`, new THREE.Vector3(EV_POS.x + 6, STACK_H + 1.6, EV_POS.z), 'pv', 0.62);
+label(`EAC<span class="long"> · ${t('tahmini maliyet', 'estimate at completion')}</span> ${pct(fmt(SCN.eac, 0))}`, new THREE.Vector3(AC_POS.x - 1, AC_TOP + EAC_H + 2.2, AC_POS.z + 3), 'ac', 0.93);
+label(`CPI <b>${fmt(SCN.cpi)}</b><span>${t('maliyet performansı', 'cost performance')}</span>`, new THREE.Vector3(-8, 38, 6), 'kpi', 0.6);
+label(`${t('Aşım tahmini', 'Forecast overrun')} <b>${pct(fmt(-SCN.vac, 1))}</b><span>VAC · EAC = BAC / CPI</span>`, new THREE.Vector3(-8, 27, 6), 'kpi warn', 0.95);
 
 // ------------------------------------------------------------------ edges, look switch
 const edgeTargets = [];

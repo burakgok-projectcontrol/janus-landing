@@ -20,18 +20,30 @@
 </head>
 <body>
 <main>
-  <a class="back" href="./">← Janus ana sayfası</a>
-  <h1>Lisanslar ve atıflar</h1>
-  <p>Sitedeki animasyonlarda aşağıdaki hazır 3D modeller kullanıldı. Diğer makineler ve sahneler bu site için kodla üretildi.</p>
+  <a class="back" href="./" data-en="← Janus home page">← Janus ana sayfası</a>
+  <h1 data-en="Licenses and credits">Lisanslar ve atıflar</h1>
+  <p data-en="The animations on this site use the following ready-made 3D models. The other machines and scenes were built in code for this site.">Sitedeki animasyonlarda aşağıdaki hazır 3D modeller kullanıldı. Diğer makineler ve sahneler bu site için kodla üretildi.</p>
   <ul>
     <li>Bulldozer — Poly by Google · <a href="https://poly.pizza/m/ddxtaegI3HQ">poly.pizza</a> · <span><a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a></span></li>
     <li>Boeing 747 — Miha Lunar · <a href="https://poly.pizza/m/49CLof4tP2V">poly.pizza</a> · <span><a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a></span></li>
     <li>Worker — Quaternius · <a href="https://poly.pizza/m/E8079Ahx7k">poly.pizza</a> · <span><a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a></span></li>
     <li>Worker — Quaternius · <a href="https://poly.pizza/m/Yg2bQZO6Hj">poly.pizza</a> · <span><a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a></span></li>
-    <li>Excavator · <a href="https://opengameart.org/content/excavator">OpenGameArt</a> · <span><a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a></span> (Blender ile dönüştürüldü)</li>
-    <li>3D motor: <a href="https://threejs.org/">three.js</a> · <span>MIT</span></li>
+    <li>Excavator · <a href="https://opengameart.org/content/excavator">OpenGameArt</a> · <span><a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a></span> <span data-en="(converted with Blender)">(Blender ile dönüştürüldü)</span></li>
+    <li><span data-en="3D engine:">3D motor:</span> <a href="https://threejs.org/">three.js</a> · <span>MIT</span></li>
   </ul>
-  <p>Modellerin şekli ve malzemeleri sitenin çizim (blueprint) görünümüne uyacak şekilde değiştirildi.</p>
+  <p data-en="The models' shapes and materials were adapted to the site's blueprint look.">Modellerin şekli ve malzemeleri sitenin çizim (blueprint) görünümüne uyacak şekilde değiştirildi.</p>
 </main>
+<script>
+// Same language choice as the home page (?lang=, saved choice, browser language).
+(() => {
+  let lang = new URLSearchParams(location.search).get('lang');
+  if (lang !== 'en' && lang !== 'tr') { try { lang = localStorage.getItem('janus-lang'); } catch (e) { lang = null; } }
+  if (lang !== 'en' && lang !== 'tr') lang = /^en/i.test(navigator.language || '') ? 'en' : 'tr';
+  if (lang !== 'en') return;
+  document.documentElement.lang = 'en';
+  document.title = 'Licenses · Janus';
+  document.querySelectorAll('[data-en]').forEach(el => { el.innerHTML = el.dataset.en; });
+})();
+</script>
 </body>
 </html>

@@ -2,12 +2,13 @@
 // PV / EV / AC curves, a "today" line, the EV forecast, an optional Earned Schedule construction and
 // floating labels. Values are an illustrative scenario, not data.
 import * as THREE from 'three';
+import { t as L_, num, pct } from './i18n.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 const clamp01 = t => Math.min(1, Math.max(0, t));
 export const S = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
 const ramp = (k, a, b) => S((k - a) / (b - a));
-export const fmt = (v, d = 2) => v.toFixed(d).replace('.', ',');
+export const fmt = num;
 
 // rate > 1: work is earned faster than planned (ahead), rate < 1: behind. EV(m) = PV(m · rate).
 export function scenario({ months = 20, today = 11, rate = 20 / 19.6, cpi = 1.04 } = {}) {
@@ -138,13 +139,13 @@ export function createEvmChart(sc, { origin, axis, len, height, columns = true, 
   };
   const t = sc.today, up = v => new THREE.Vector3(0, v, 0);
   const L = { pv: [sc.months * 0.8, 0, 3.5], ev: [t * 0.64, 0, 6], ac: [t + 0.4, 0, -3.5], ...labelAt };
-  label('PV · planlanan değer', P(L.pv[0], sc.pv(L.pv[0]), L.pv[1]).add(up(L.pv[2])), 'pv', 0.45);
-  label('EV · kazanılmış değer', P(L.ev[0], sc.ev(L.ev[0]), L.ev[1]).add(up(L.ev[2])), 'ev', 0.6);
-  if (ac) label('AC · gerçekleşen maliyet', P(L.ac[0], sc.ac(t), L.ac[1]).add(up(L.ac[2])), 'ac', 0.7);
-  label('Bugün · ay ' + fmt(t, 0), P(t, 112).add(up(1.5)), 'today', 0.75);
+  label(L_('PV · planlanan değer', 'PV · planned value'), P(L.pv[0], sc.pv(L.pv[0]), L.pv[1]).add(up(L.pv[2])), 'pv', 0.45);
+  label(L_('EV · kazanılmış değer', 'EV · earned value'), P(L.ev[0], sc.ev(L.ev[0]), L.ev[1]).add(up(L.ev[2])), 'ev', 0.6);
+  if (ac) label(L_('AC · gerçekleşen maliyet', 'AC · actual cost'), P(L.ac[0], sc.ac(t), L.ac[1]).add(up(L.ac[2])), 'ac', 0.7);
+  label(L_('Bugün · ay ', 'Today · month ') + fmt(t, 0), P(t, 112).add(up(1.5)), 'today', 0.75);
   if (es) {
-    label(`ES · kazanılan zaman: ay ${fmt(sc.es, 1)}`, P(sc.es * 0.55, 0, -5).add(up(2)), 'ev', 0.8);
-    label(`plana göre bugün: ay ${fmt(t, 0)}`, P(t * 0.55, 0, 5).add(up(-2.5)), 'pv', 0.8);
+    label(L_(`ES · kazanılan zaman: ay ${fmt(sc.es, 1)}`, `ES · earned schedule: month ${fmt(sc.es, 1)}`), P(sc.es * 0.55, 0, -5).add(up(2)), 'ev', 0.8);
+    label(L_(`plana göre bugün: ay ${fmt(t, 0)}`, `planned for today: month ${fmt(t, 0)}`), P(t * 0.55, 0, 5).add(up(-2.5)), 'pv', 0.8);
   }
   kpis.forEach((k, i) => label(`${k.name} <b>${k.value}</b><span>${k.sub}</span>`, P(k.m ?? t + 5, k.v ?? 42 - i * 24), 'kpi', 0.82 + i * 0.04));
 
@@ -170,17 +171,17 @@ export function createEvmChart(sc, { origin, axis, len, height, columns = true, 
   strip.setAttribute('aria-hidden', 'true');
   const chips = [];
   const chip = (html, at, cls = '') => { const s = document.createElement('span'); s.className = cls; s.innerHTML = html; strip.appendChild(s); chips.push([s, at]); };
-  chip('<i style="background:#c4b5fd"></i>PV planlanan', 0.45);
-  chip('<i style="background:#67e8f9"></i>EV kazanılmış', 0.6);
-  if (ac) chip('<i style="background:#fcd34d"></i>AC gerçekleşen', 0.7);
-  if (es) chip(`<i style="background:#67e8f9"></i>ES ay ${fmt(sc.es, 1)}`, 0.8);
+  chip(`<i style="background:#c4b5fd"></i>${L_('PV planlanan', 'PV planned')}`, 0.45);
+  chip(`<i style="background:#67e8f9"></i>${L_('EV kazanılmış', 'EV earned')}`, 0.6);
+  if (ac) chip(`<i style="background:#fcd34d"></i>${L_('AC gerçekleşen', 'AC actual')}`, 0.7);
+  if (es) chip(`<i style="background:#67e8f9"></i>${L_('ES ay', 'ES month')} ${fmt(sc.es, 1)}`, 0.8);
   strip.appendChild(Object.assign(document.createElement('span'), { className: 'row' }));
   kpis.forEach((k, i) => chip(`${k.name}<b>${k.value}</b>`, 0.82 + i * 0.04, 'kpi'));
   document.body.appendChild(strip);
-  label('tahmin', P((t + sc.earnedEnd) / 2, sc.ev((t + sc.earnedEnd) / 2)).add(up(2.4)), 'fc', 0.92);
-  label('%100', P(-0.9, 100), 'axis', 0.05);
-  label('%50', P(-0.9, 50), 'axis', 0.05);
-  for (let m = 0; m <= sc.months; m += 5) label(m === 0 ? 'ay 0' : String(m), P(m, 0).add(up(-4.5)), 'axis', 0.05);
+  label(L_('tahmin', 'forecast'), P((t + sc.earnedEnd) / 2, sc.ev((t + sc.earnedEnd) / 2)).add(up(2.4)), 'fc', 0.92);
+  label(pct(100), P(-0.9, 100), 'axis', 0.05);
+  label(pct(50), P(-0.9, 50), 'axis', 0.05);
+  for (let m = 0; m <= sc.months; m += 5) label(m === 0 ? L_('ay 0', 'month 0') : String(m), P(m, 0).add(up(-4.5)), 'axis', 0.05);
 
   // k: build-up 0..1; fade: overall opacity 0..1.
   function set(k, fade = 1) {

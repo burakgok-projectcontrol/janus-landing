@@ -62,6 +62,8 @@ import { createMachines } from './machines.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { createEvmChart, scenario, fmt } from './evm.js';
 import { createSheet, createBackdrop } from './sheet.js';
+import { t } from './i18n.js';
+document.getElementById('note').textContent = t('Örnek senaryo · temsilî değerler', 'Sample scenario · illustrative values');
 
 // ?embed: driven by the landing page (no own controls, progress set from outside); ?lite: lighter rendering for phones.
 const QS = new URLSearchParams(location.search);
@@ -413,7 +415,7 @@ const SC = scenario();
 const CH = { x: 34, y0: 4, height: 24, z0: 26, z1: -26 };
 const chart = createEvmChart(SC, {
   origin: new THREE.Vector3(CH.x, CH.y0, CH.z0), axis: new THREE.Vector3(0, 0, Math.sign(CH.z1 - CH.z0)), len: Math.abs(CH.z1 - CH.z0), height: CH.height,
-  kpis: [{ name: 'SPI', value: fmt(SC.spi), sub: 'takvim performansı' }, { name: 'CPI', value: fmt(SC.cpi), sub: 'maliyet performansı' }],
+  kpis: [{ name: 'SPI', value: fmt(SC.spi), sub: t('takvim performansı', 'schedule performance') }, { name: 'CPI', value: fmt(SC.cpi), sub: t('maliyet performansı', 'cost performance') }],
 });
 scene.add(chart.group);
 // Camera framing for the chart: looking upstream at the chart, the dam behind it.
