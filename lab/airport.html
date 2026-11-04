@@ -27,6 +27,10 @@
   .evm-label.kpi b { font-size: 22px; margin-left: 6px; color: #67e8f9; }
   .evm-label.kpi.warn b { color: #fcd34d; }
   .evm-label.kpi span { display: block; font-weight: 400; font-size: 11px; color: #9fb0c9; margin-top: 2px; }
+  @media (max-width: 600px) {
+    .evm-label { font-size: 10px; } .evm-label.axis { font-size: 9px; }
+    .evm-label.kpi { padding: 5px 8px; font-size: 11px; border-radius: 8px; } .evm-label.kpi b { font-size: 16px; } .evm-label.kpi span { font-size: 9px; }
+  }
   .note { position: fixed; top: 60px; left: 12px; font-size: 12px; color: #9fb0c9; z-index: 2; opacity: 0; transition: opacity .4s; }
   .embed .top, .embed .bar { display: none; }
   .embed .note { top: auto; bottom: 14px; left: auto; right: 16px; }
@@ -478,13 +482,15 @@ const chart = createEvmChart(SC, {
 });
 scene.add(chart.group);
 document.querySelectorAll('.evm-label.kpi')[1]?.classList.add('warn');
-const CHART_TGT = new THREE.Vector3(0, 18, RWY.z), CHART_DIR = new THREE.Vector3(0, 31, 160).normalize(), CHART_SIZE = { w: 108, h: 46 };
+const CHART_TGT = new THREE.Vector3(8, 18, RWY.z), CHART_DIR = new THREE.Vector3(0, 31, 160).normalize(), CHART_SIZE = { w: 124, h: 46 }; // wider than the axis and centred right of it: the late forecast runs past month 24
 const CHART_CAM = new THREE.Vector3();
 // Camera distance that fits the chart: by its height, and by the free width (on the landing page the caption takes the left third).
 function fitChartCam() {
   const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-  const free = EMBED && camera.aspect > 1.2 ? 0.64 : 0.92;
-  const d = Math.max(CHART_SIZE.h / 2 / t / 0.9, CHART_SIZE.w / 2 / (t * camera.aspect) / free);
+  const free = EMBED && camera.aspect > 1.2 ? 0.56 : EMBED && camera.aspect < 1 ? 0.8 : 0.92;
+  // On a phone the landing page puts the caption in the lower part: the chart fits between the header and the card.
+  const tall = EMBED && camera.aspect < 1 ? 0.42 : 0.9;
+  const d = Math.max(CHART_SIZE.h / 2 / t / tall, CHART_SIZE.w / 2 / (t * camera.aspect) / free);
   CHART_CAM.copy(CHART_TGT).addScaledVector(CHART_DIR, d);
   sheet.place(camera, CHART_TGT, CHART_DIR, d);
 }
@@ -555,9 +561,11 @@ function syncSize() {
   const cv = renderer.domElement;
   if (cv.clientWidth === innerWidth && cv.clientHeight === innerHeight) return;
   camera.aspect = innerWidth / Math.max(innerHeight, 1);
-  camera.fov = camera.aspect < 1 ? 50 : 32;
+  camera.fov = camera.aspect < 1 ? (EMBED ? 56 : 50) : 32;
   // Embedded on a wide screen: shift the picture right so the caption panel on the left does not cover it.
-  if (EMBED && camera.aspect > 1.2) camera.setViewOffset(innerWidth, innerHeight, -innerWidth * 0.16, 0, innerWidth, innerHeight);
+  if (EMBED && camera.aspect > 1.2) camera.setViewOffset(innerWidth, innerHeight, -innerWidth * 0.18, 0, innerWidth, innerHeight);
+  // Embedded on a phone: lift the picture into the upper part; the caption card sits in the lower part.
+  else if (EMBED && camera.aspect < 1) camera.setViewOffset(innerWidth, innerHeight, 0, innerHeight * 0.16, innerWidth, innerHeight);
   else camera.clearViewOffset();
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);

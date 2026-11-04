@@ -147,6 +147,36 @@ export function createEvmChart(sc, { origin, axis, len, height, columns = true, 
     label(`plana göre bugün: ay ${fmt(t, 0)}`, P(t * 0.55, 0, 5).add(up(-2.5)), 'pv', 0.8);
   }
   kpis.forEach((k, i) => label(`${k.name} <b>${k.value}</b><span>${k.sub}</span>`, P(k.m ?? t + 5, k.v ?? 42 - i * 24), 'kpi', 0.82 + i * 0.04));
+
+  // Phones: the chart is too small for labels on the curves, so the names and indices sit in a strip above it instead.
+  if (!document.getElementById('evm-strip-css')) {
+    const st = document.createElement('style');
+    st.id = 'evm-strip-css';
+    st.textContent = `.evm-strip { display: none; }
+@media (max-width: 600px) {
+  .evm-label.pv, .evm-label.ev, .evm-label.ac, .evm-label.fc, .evm-label.kpi { display: none; }
+  .evm-strip { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 12px; position: fixed; left: 12px; right: 12px; top: 72px; z-index: 2; pointer-events: none;
+    font: 600 11px/1.3 system-ui, sans-serif; color: #e6edf7; text-shadow: 0 1px 6px #0a1f44; }
+  .evm-strip > span { transition: opacity .35s; white-space: nowrap; }
+  .evm-strip i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  .evm-strip .kpi { background: rgba(10, 31, 68, .85); border: 1px solid #22d3ee; border-radius: 8px; padding: 3px 8px; }
+  .evm-strip .kpi b { color: #67e8f9; font-size: 14px; margin-left: 4px; }
+  .evm-strip .row { flex-basis: 100%; height: 0; }
+}`;
+    document.head.appendChild(st);
+  }
+  const strip = document.createElement('div');
+  strip.className = 'evm-strip';
+  strip.setAttribute('aria-hidden', 'true');
+  const chips = [];
+  const chip = (html, at, cls = '') => { const s = document.createElement('span'); s.className = cls; s.innerHTML = html; strip.appendChild(s); chips.push([s, at]); };
+  chip('<i style="background:#c4b5fd"></i>PV planlanan', 0.45);
+  chip('<i style="background:#67e8f9"></i>EV kazanılmış', 0.6);
+  if (ac) chip('<i style="background:#fcd34d"></i>AC gerçekleşen', 0.7);
+  if (es) chip(`<i style="background:#67e8f9"></i>ES ay ${fmt(sc.es, 1)}`, 0.8);
+  strip.appendChild(Object.assign(document.createElement('span'), { className: 'row' }));
+  kpis.forEach((k, i) => chip(`${k.name}<b>${k.value}</b>`, 0.82 + i * 0.04, 'kpi'));
+  document.body.appendChild(strip);
   label('tahmin', P((t + sc.earnedEnd) / 2, sc.ev((t + sc.earnedEnd) / 2)).add(up(2.4)), 'fc', 0.92);
   label('%100', P(-0.9, 100), 'axis', 0.05);
   label('%50', P(-0.9, 50), 'axis', 0.05);
@@ -177,6 +207,7 @@ export function createEvmChart(sc, { origin, axis, len, height, columns = true, 
       l.element.style.opacity = k >= l.userData.at ? fade : 0;
       l.visible = g.visible;
     }
+    for (const [s, at] of chips) s.style.opacity = g.visible && k >= at ? fade : 0;
   }
   set(0);
   return { group: g, set, cols, P };
