@@ -1,0 +1,183 @@
+// 3D earned-value chart that a construction scene turns into: optional monthly cumulative EV columns,
+// PV / EV / AC curves, a "today" line, the EV forecast, an optional Earned Schedule construction and
+// floating labels. Values are an illustrative scenario, not data.
+import * as THREE from 'three';
+import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+const clamp01 = t => Math.min(1, Math.max(0, t));
+export const S = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
+const ramp = (k, a, b) => S((k - a) / (b - a));
+export const fmt = (v, d = 2) => v.toFixed(d).replace('.', ',');
+
+// rate > 1: work is earned faster than planned (ahead), rate < 1: behind. EV(m) = PV(m · rate).
+export function scenario({ months = 20, today = 11, rate = 20 / 19.6, cpi = 1.04 } = {}) {
+  const pv = m => 100 * S(m / months);
+  const ev = m => pv(m * rate);
+  const ac = m => ev(m) / cpi;
+  const es = today * rate; // earned schedule: when the plan reached today's EV
+  return { months, today, rate, cpi, pv, ev, ac, es, earnedEnd: months / rate, spi: ev(today) / pv(today), spiT: es / today };
+}
+
+// origin: point at (month 0, value 0); axis: unit vector along time; len: axis length; height: 100 % in metres.
+export function createEvmChart(sc, { origin, axis, len, height, columns = true, ac = true, es = false, kpis = [], labelAt = {} }) {
+  const g = new THREE.Group();
+  const UP = new THREE.Vector3(0, 1, 0);
+  const across = new THREE.Vector3().crossVectors(axis, UP).normalize(); // towards the viewer's side
+  const P = (m, v, side = 0) => origin.clone().addScaledVector(axis, (len * m) / sc.months).addScaledVector(UP, (height * v) / 100).addScaledVector(across, side);
+  const mats = [];
+  const mat = (color, extra = {}) => {
+    const m = new THREE.MeshStandardMaterial({ color, roughness: 0.6, transparent: true, ...extra });
+    m.userData.base = m.opacity;
+    mats.push(m);
+    return m;
+  };
+  const lineMat = (color, opacity, dashed) => {
+    const m = dashed
+      ? new THREE.LineDashedMaterial({ color, transparent: true, opacity, dashSize: 0.7, gapSize: 0.5 })
+      : new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+    m.userData.base = opacity;
+    mats.push(m);
+    return m;
+  };
+  const C = {
+    pv: mat('#a78bfa', { emissive: '#7c3aed', emissiveIntensity: 0.6 }),
+    ev: mat('#22d3ee', { emissive: '#22d3ee', emissiveIntensity: 0.7 }),
+    ac: mat('#fbbf24', { emissive: '#f59e0b', emissiveIntensity: 0.6 }),
+    col: mat('#22d3ee', { opacity: 0.28, emissive: '#0e7490', emissiveIntensity: 0.4, depthWrite: false }),
+    pvBar: mat('#a78bfa', { opacity: 0.55, emissive: '#7c3aed', emissiveIntensity: 0.5 }),
+    evBar: mat('#22d3ee', { opacity: 0.75, emissive: '#22d3ee', emissiveIntensity: 0.6 }),
+    colEdge: lineMat('#a5f3fc', 0.8),
+    axis: lineMat('#cfe8ff', 0.7),
+    grid: lineMat('#5fa8ff', 0.3, true),
+    today: lineMat('#ffffff', 0.9, true),
+    es: lineMat('#67e8f9', 0.9, true),
+  };
+  const line = (pts, m, parent = g) => {
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), m);
+    l.computeLineDistances();
+    parent.add(l);
+    return l;
+  };
+  const alongQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), axis);
+
+  // Axes and 50 % / 100 % guides.
+  line([P(0, 0), P(sc.months, 0)], C.axis);
+  line([P(0, 0), P(0, 105)], C.axis);
+  for (const v of [50, 100]) line([P(0, v), P(sc.months, v)], C.grid);
+  for (let m = 0; m <= sc.months; m += 5) line([P(m, 0), P(m, -2)], C.axis);
+
+  // Monthly columns of cumulative EV up to today.
+  const cols = [];
+  if (columns) for (let m = 1; m <= Math.floor(sc.today); m++) {
+    const h = (height * sc.ev(m)) / 100;
+    const geo = new THREE.BoxGeometry(1.6, 1, 1.4).translate(0, 0.5, 0);
+    const col = new THREE.Mesh(geo, C.col);
+    col.quaternion.copy(alongQ);
+    col.position.copy(P(m - 0.5, 0));
+    col.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), C.colEdge));
+    col.userData.h = h;
+    g.add(col);
+    cols.push(col);
+  }
+
+  // Curves as tubes, revealed progressively with drawRange.
+  const tube = (fn, m0, m1, r, material, segs = 120) => {
+    const pts = [];
+    for (let i = 0; i <= 60; i++) { const m = m0 + ((m1 - m0) * i) / 60; pts.push(P(m, fn(m))); }
+    const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), segs, r, 8);
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.userData.total = geo.index.count;
+    geo.setDrawRange(0, 0);
+    g.add(mesh);
+    return mesh;
+  };
+  const reveal = (mesh, k) => mesh.geometry.setDrawRange(0, Math.floor((mesh.userData.total * k) / 6) * 6);
+  const dashes = (fn, m0, m1, r, material) => {
+    const out = [];
+    for (let m = m0; m < m1; m += 0.5) { const d = tube(fn, m, Math.min(m1, m + 0.32), r, material, 6); reveal(d, 1); out.push(d); }
+    return out;
+  };
+  const pvDashes = dashes(sc.pv, 0, sc.months, 0.16, C.pv);
+  const evLine = tube(sc.ev, 0, sc.today, 0.24, C.ev);
+  const acLine = ac ? tube(sc.ac, 0, sc.today, 0.2, C.ac) : null;
+  const fcDashes = dashes(sc.ev, sc.today, Math.min(sc.earnedEnd, sc.months * 1.25), 0.14, C.ev);
+
+  const todayLine = line([P(sc.today, 0), P(sc.today, 112)], C.today);
+
+  // Earned Schedule: EV(today) traced back to the date the plan reached it, and two bars on the time axis.
+  const esGroup = new THREE.Group();
+  if (es) {
+    g.add(esGroup);
+    const v = sc.ev(sc.today);
+    line([P(sc.today, v), P(sc.es, v)], C.es, esGroup);
+    line([P(sc.es, v), P(sc.es, 0)], C.es, esGroup);
+    const bar = (m, side, material) => {
+      const geo = new THREE.BoxGeometry(1, 0.3, 1.8).translate(0.5, 0.15, 0);
+      const b = new THREE.Mesh(geo, material);
+      b.quaternion.copy(alongQ);
+      b.position.copy(P(0, 0, side));
+      b.userData.full = (len * m) / sc.months;
+      esGroup.add(b);
+      return b;
+    };
+    esGroup.userData.bars = [bar(sc.today, 5, C.pvBar), bar(sc.es, -5, C.evBar)];
+  }
+
+  // Labels (HTML, follow the 3D points).
+  const labels = [];
+  const label = (html, pos, cls, at) => {
+    const div = document.createElement('div');
+    div.className = 'evm-label ' + cls;
+    div.innerHTML = html;
+    const o = new CSS2DObject(div);
+    o.position.copy(pos);
+    o.userData.at = at;
+    g.add(o);
+    labels.push(o);
+    return o;
+  };
+  const t = sc.today, up = v => new THREE.Vector3(0, v, 0);
+  const L = { pv: [sc.months * 0.8, 0, 3.5], ev: [t * 0.64, 0, 6], ac: [t + 0.4, 0, -3.5], ...labelAt };
+  label('PV · planlanan değer', P(L.pv[0], sc.pv(L.pv[0]), L.pv[1]).add(up(L.pv[2])), 'pv', 0.45);
+  label('EV · kazanılmış değer', P(L.ev[0], sc.ev(L.ev[0]), L.ev[1]).add(up(L.ev[2])), 'ev', 0.6);
+  if (ac) label('AC · gerçekleşen maliyet', P(L.ac[0], sc.ac(t), L.ac[1]).add(up(L.ac[2])), 'ac', 0.7);
+  label('Bugün · ay ' + fmt(t, 0), P(t, 112).add(up(1.5)), 'today', 0.75);
+  if (es) {
+    label(`ES · kazanılan zaman: ay ${fmt(sc.es, 1)}`, P(sc.es * 0.55, 0, -5).add(up(2)), 'ev', 0.8);
+    label(`plana göre bugün: ay ${fmt(t, 0)}`, P(t * 0.55, 0, 5).add(up(-2.5)), 'pv', 0.8);
+  }
+  kpis.forEach((k, i) => label(`${k.name} <b>${k.value}</b><span>${k.sub}</span>`, P(k.m ?? t + 5, k.v ?? 42 - i * 24), 'kpi', 0.82 + i * 0.04));
+  label('tahmin', P((t + sc.earnedEnd) / 2, sc.ev((t + sc.earnedEnd) / 2)).add(up(2.4)), 'fc', 0.92);
+  label('%100', P(-0.9, 100), 'axis', 0.05);
+  label('%50', P(-0.9, 50), 'axis', 0.05);
+  for (let m = 0; m <= sc.months; m += 5) label(m === 0 ? 'ay 0' : String(m), P(m, 0).add(up(-4.5)), 'axis', 0.05);
+
+  // k: build-up 0..1; fade: overall opacity 0..1.
+  function set(k, fade = 1) {
+    g.visible = k > 0 && fade > 0.01;
+    for (const m of mats) m.opacity = m.userData.base * fade;
+    cols.forEach((c, i) => {
+      const a = 0.1 + (0.35 * i) / cols.length;
+      const kk = ramp(k, a, a + 0.15);
+      c.visible = kk > 0.001;
+      c.scale.y = Math.max(kk * c.userData.h, 0.001);
+    });
+    const pvK = ramp(k, 0.15, 0.55);
+    pvDashes.forEach((d, i) => (d.visible = i / pvDashes.length < pvK));
+    reveal(evLine, ramp(k, 0.3, 0.65));
+    if (acLine) reveal(acLine, ramp(k, 0.4, 0.72));
+    todayLine.visible = k > 0.74;
+    if (es) {
+      esGroup.visible = k > 0.76;
+      esGroup.userData.bars.forEach(b => b.scale.set(Math.max(ramp(k, 0.76, 0.86) * b.userData.full, 0.001), 1, 1));
+    }
+    const fcK = ramp(k, 0.88, 1);
+    fcDashes.forEach((d, i) => (d.visible = fcK > 0 && i / fcDashes.length < fcK));
+    for (const l of labels) {
+      l.element.style.opacity = k >= l.userData.at ? fade : 0;
+      l.visible = g.visible;
+    }
+  }
+  set(0);
+  return { group: g, set, cols, P };
+}

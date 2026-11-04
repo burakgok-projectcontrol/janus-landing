@@ -1,0 +1,12 @@
+# 3D model credits (test set, downloaded 2026-11-04 from poly.pizza)
+- jet.glb — "Jet - Free Model By Poly by Google" — https://poly.pizza/m/bgUY8zN2Bq9 — https://creativecommons.org/licenses/by/3.0/
+- bulldozer-b.glb — "Bulldozer - Free Model By Poly by Google" — https://poly.pizza/m/eY1N7Rz9Drr — https://creativecommons.org/licenses/by/3.0/
+- bulldozer-a.glb — "Bulldozer - Free Model By Poly by Google" — https://poly.pizza/m/ddxtaegI3HQ — https://creativecommons.org/licenses/by/3.0/
+- crane-a.glb — "Crane - Free Model By J-Toastie" — https://poly.pizza/m/gCcpjaxFdv — https://creativecommons.org/licenses/by/3.0/
+- crane-c.glb — "Building construction crane - Free Model By Kieran Farr" — https://poly.pizza/m/cm5teXZ5Ctr — https://creativecommons.org/licenses/by/3.0/
+- boeing-747.glb — "Boeing 747 - Free Model By Miha Lunar" — https://poly.pizza/m/49CLof4tP2V — https://creativecommons.org/licenses/by/3.0/
+- dump-truck.glb — "Dump truck - Free Model By jeremy" — https://poly.pizza/m/1BpGYg14QGD — https://creativecommons.org/licenses/by/3.0/
+- worker-a.glb — "Worker - Free Model By Quaternius" — https://poly.pizza/m/Yg2bQZO6Hj — https://creativecommons.org/publicdomain/zero/1.0/
+- worker-b.glb — "Worker - Free Model By Quaternius" — https://poly.pizza/m/E8079Ahx7k — https://creativecommons.org/licenses/by/3.0/
+- crane-b.glb — "Crane - Free Model By Max Hancock" — https://poly.pizza/m/aZFdGwasy60 — https://creativecommons.org/licenses/by/3.0/
+- excavator.glb — "Excavator" — https://opengameart.org/content/excavator — https://creativecommons.org/publicdomain/zero/1.0/ (converted from .blend with Blender 4.5; terrain removed)

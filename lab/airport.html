@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Janus havalimanı sahnesi</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0a1f44; color: #e6edf7; font: 14px/1.4 system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; }
+  .top { position: fixed; top: 12px; left: 12px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 2; }
+  button { background: #131f36; color: inherit; border: 1px solid #22304d; border-radius: 8px; padding: 8px 12px; cursor: pointer; font: inherit; }
+  button[aria-pressed="true"] { background: linear-gradient(135deg, #22d3ee, #7c3aed); border-color: transparent; color: #fff; }
+  .bar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(720px, calc(100% - 32px)); background: rgba(19, 31, 54, .88); border: 1px solid #22304d; border-radius: 14px; padding: 12px 16px; display: grid; grid-template-columns: auto 1fr auto; gap: 8px 14px; align-items: center; backdrop-filter: blur(8px); z-index: 2; }
+  .bar .phase { grid-column: 1 / -1; color: #9fb0c9; font-size: 13px; }
+  .bar .phase b { color: #e6edf7; font-weight: 600; }
+  .pct { font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: #22d3ee; }
+  .labels-layer { position: fixed; inset: 0; pointer-events: none; z-index: 1; }
+  .evm-label { font: 600 12px/1.2 system-ui, sans-serif; color: #e6edf7; white-space: nowrap; transition: opacity .35s; text-shadow: 0 1px 6px #0a1f44; }
+  .evm-label.pv { color: #c4b5fd; }
+  .evm-label.ev, .evm-label.fc { color: #67e8f9; }
+  .evm-label.ac { color: #fcd34d; }
+  .evm-label.axis { color: #9fc3ef; font-weight: 500; font-size: 11px; }
+  .evm-label.today { color: #fff; }
+  .evm-label.kpi { background: rgba(10, 31, 68, .85); border: 1px solid #22d3ee; border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+  .evm-label.kpi.warn { border-color: #fbbf24; }
+  .evm-label.kpi b { font-size: 22px; margin-left: 6px; color: #67e8f9; }
+  .evm-label.kpi.warn b { color: #fcd34d; }
+  .evm-label.kpi span { display: block; font-weight: 400; font-size: 11px; color: #9fb0c9; margin-top: 2px; }
+  .note { position: fixed; top: 60px; left: 12px; font-size: 12px; color: #9fb0c9; z-index: 2; opacity: 0; transition: opacity .4s; }
+  .embed .top, .embed .bar { display: none; }
+  .embed .note { top: auto; bottom: 14px; left: auto; right: 16px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="top">
+  <button id="orig" aria-pressed="false">Orijinal renkler</button>
+  <button id="maq" aria-pressed="false">Maket malzemesi</button>
+  <button id="bp" aria-pressed="true">Blueprint</button>
+</div>
+<div class="note" id="note">Örnek senaryo · temsilî değerler</div>
+<div class="bar">
+  <button id="play" aria-pressed="true" aria-label="Oynat / duraklat">❚❚</button>
+  <input id="prog" type="range" min="0" max="1000" value="0" aria-label="Yapım ilerlemesi">
+  <span class="pct" id="pct">0%</span>
+  <div class="phase" id="phase"></div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
+import { createMachines } from './machines.js';
+import { createEvmChart, scenario, fmt } from './evm.js';
+import { createSheet, createBackdrop } from './sheet.js';
+
+// ?embed: driven by the landing page (no own controls, progress set from outside); ?lite: lighter rendering for phones.
+const QS = new URLSearchParams(location.search);
+const EMBED = QS.has('embed'), LITE = QS.has('lite');
+if (EMBED) document.body.classList.add('embed');
+
+// World in metres. The runway runs along x; terminal, apron and tower lie on the -z side.
+const SIZE_X = 170, SIZE_Z = 120;
+const RWY = { x0: -60, x1: 60, z: 10, w: 12 };
+const smooth = t => t * t * (3 - 2 * t);
+const clamp01 = t => Math.min(1, Math.max(0, t));
+const ramp = (c, a, b) => smooth(clamp01((c - a) / (b - a)));
+// A flat plain with low hills around the edge (they give the contour lines something to draw).
+const ground = (x, z) => {
+  const rim = Math.max(smooth(clamp01((Math.abs(z) - 42) / 16)), smooth(clamp01((Math.abs(x) - 70) / 14)));
+  return rim * (5 + 2.5 * Math.sin(x * 0.09) + 1.5 * Math.cos(z * 0.13));
+};
+
+// ------------------------------------------------------------------ renderer, camera, light
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, LITE ? 1.25 : 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.domElement.className = 'labels-layer';
+document.body.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+const backdrop = createBackdrop('airport'); // blueprint paper behind the whole scene
+scene.background = new THREE.Color('#0a1f44');
+scene.fog = new THREE.Fog('#0a1f44', 200, 420);
+const camera = new THREE.PerspectiveCamera(32, 1, 1, 1500);
+camera.position.set(95, 70, 110);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(-2, 2, -6);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.47;
+
+scene.add(new THREE.HemisphereLight('#dbe7ff', '#1a2440', 1.1));
+const sun = new THREE.DirectionalLight('#ffffff', 2.3);
+sun.position.set(60, 110, 70);
+sun.castShadow = true;
+sun.shadow.mapSize.setScalar(LITE ? 1024 : 4096);
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.05;
+Object.assign(sun.shadow.camera, { left: -95, right: 95, top: 75, bottom: -75, near: 10, far: 300 });
+scene.add(sun);
+
+// ------------------------------------------------------------------ materials: original / maquette / blueprint
+const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
+const bp = (color, extra = {}) => std(color, { roughness: 1, ...extra });
+const MAQ = std('#f2f4f8', { side: THREE.DoubleSide });
+const ACCENT = std('#22d3ee', { roughness: 0.6, emissive: '#0b4f5c', emissiveIntensity: 0.3 });
+const BP_EDGE = new THREE.LineBasicMaterial({ color: '#cfe8ff', transparent: true, opacity: 0.7 });
+const BP = {
+  machine: bp('#1a4589', { side: THREE.DoubleSide }),
+  dark: bp('#10306a'),
+  glass: bp('#22d3ee', { transparent: true, opacity: 0.25, emissive: '#22d3ee', emissiveIntensity: 0.2 }),
+  steel: bp('#2b62b5'),
+  light: bp('#22d3ee', { emissive: '#22d3ee', emissiveIntensity: 1 }),
+  worker: bp('#5eead4', { emissive: '#22d3ee', emissiveIntensity: 0.7 }),
+  plane: bp('#a78bfa', { emissive: '#7c3aed', emissiveIntensity: 0.55, side: THREE.DoubleSide }),
+};
+const PLANE_MAQ = std('#8b5cf6', { roughness: 0.6, side: THREE.DoubleSide });
+const M = {
+  terrain: [std('#a7b07c', { flatShading: true }), std('#d5dce6', { flatShading: true }), bp('#123468')],
+  skirt: [std('#7a6a52', { side: THREE.DoubleSide }), std('#c9d1dc', { side: THREE.DoubleSide }), bp('#0d2957', { side: THREE.DoubleSide })],
+  base: [std('#4b3f31'), std('#aab4c2'), bp('#0a2250')],
+  earth: [std('#a88b63'), std('#e4e9f0'), bp('#1b4c94')],
+  asphalt: [std('#3d4249'), std('#c4ccd8'), bp('#0f2f63')],
+  active: [std('#c9a876', { emissive: '#3a2a10', emissiveIntensity: 0.2 }), std('#a5f3fc', { emissive: '#0e7490', emissiveIntensity: 0.35 }), bp('#1e9fd0', { emissive: '#22d3ee', emissiveIntensity: 0.35, transparent: true, opacity: 0.85 })],
+  concrete: [std('#b8bcc2'), std('#f7f8fb'), bp('#1f539e')],
+  slab: [std('#a9adb3'), std('#eef1f6'), bp('#1c4d96')],
+  marking: [std('#f8fafc', { emissive: '#ffffff', emissiveIntensity: 0.2 }), std('#22d3ee'), bp('#a5f3fc', { emissive: '#a5f3fc', emissiveIntensity: 0.6 })],
+  glass: [std('#6f93b5', { transparent: true, opacity: 0.6, roughness: 0.15, metalness: 0.3 }), std('#9fb6cc', { transparent: true, opacity: 0.55, roughness: 0.2 }), bp('#22d3ee', { transparent: true, opacity: 0.22, emissive: '#22d3ee', emissiveIntensity: 0.25 })],
+};
+M.slab.forEach(mt => (mt.side = THREE.DoubleSide));
+const IDX = { orig: 0, maq: 1, bp: 2 };
+let MODE = 'bp';
+function mesh(geo, key, parent = scene) {
+  const m = new THREE.Mesh(geo, M[key][IDX[MODE]]);
+  m.userData.mat = key;
+  m.castShadow = m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+
+// ------------------------------------------------------------------ terrain, skirt, base, contour lines
+const terrainGeo = new THREE.PlaneGeometry(SIZE_X, SIZE_Z, 85, 60).rotateX(-Math.PI / 2);
+const tp = terrainGeo.attributes.position;
+for (let i = 0; i < tp.count; i++) tp.setY(i, ground(tp.getX(i), tp.getZ(i)));
+terrainGeo.computeVertexNormals();
+const terrain = mesh(terrainGeo, 'terrain');
+terrain.castShadow = false;
+terrain.userData.noEdges = true;
+
+const BASE_Y = -4;
+const hx = SIZE_X / 2, hz = SIZE_Z / 2;
+for (const [x0, z0, x1, z1] of [[-hx, -hz, hx, -hz], [-hx, hz, hx, hz], [-hx, -hz, -hx, hz], [hx, -hz, hx, hz]]) {
+  const v = [];
+  for (let i = 0; i < 80; i++) {
+    const a = [x0 + ((x1 - x0) * i) / 80, z0 + ((z1 - z0) * i) / 80], b = [x0 + ((x1 - x0) * (i + 1)) / 80, z0 + ((z1 - z0) * (i + 1)) / 80];
+    const ya = ground(a[0], a[1]), yb = ground(b[0], b[1]);
+    v.push(a[0], ya, a[1], b[0], yb, b[1], b[0], BASE_Y, b[1], a[0], ya, a[1], b[0], BASE_Y, b[1], a[0], BASE_Y, a[1]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  g.computeVertexNormals();
+  mesh(g, 'skirt');
+}
+mesh(box(SIZE_X + 4, 1.2, SIZE_Z + 4), 'base').position.y = BASE_Y - 0.6;
+
+function contours(geo, step) {
+  const P = geo.attributes.position, I = geo.index.array;
+  const thin = [], bold = [];
+  const v = i => new THREE.Vector3(P.getX(i), P.getY(i), P.getZ(i));
+  for (let t = 0; t < I.length; t += 3) {
+    const tri = [v(I[t]), v(I[t + 1]), v(I[t + 2])];
+    const ys = tri.map(q => q.y);
+    for (let L = Math.ceil(Math.min(...ys) / step) * step; L <= Math.max(...ys); L += step) {
+      if (L <= 0.01) continue;
+      const pts = [];
+      for (const [a, b] of [[0, 1], [1, 2], [2, 0]]) {
+        const ya = tri[a].y - L, yb = tri[b].y - L;
+        if ((ya < 0) !== (yb < 0)) pts.push(tri[a].clone().lerp(tri[b], ya / (ya - yb)));
+      }
+      if (pts.length === 2) (Math.round(L / step) % 5 === 0 ? bold : thin).push(...pts.flatMap(q => [q.x, q.y + 0.06, q.z]));
+    }
+  }
+  const g = new THREE.Group();
+  for (const [arr, color, opacity] of [[thin, '#5fa8ff', 0.4], [bold, '#a9d4ff', 0.75]]) {
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+    g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color, transparent: true, opacity })));
+  }
+  g.userData.bpOnly = true;
+  return g;
+}
+scene.add(contours(terrainGeo, 0.5));
+
+// ------------------------------------------------------------------ runway, taxiway, apron
+// Each layer is a unit-length slab stretched along x as the work front advances.
+const strip = (key, y, h, w, z) => {
+  const m = mesh(new THREE.BoxGeometry(1, h, w).translate(0.5, h / 2, 0), key);
+  m.position.set(RWY.x0, y, z);
+  return m;
+};
+const rwyBase = strip('earth', 0, 0.35, RWY.w + 3, RWY.z);
+const rwyAsphalt = strip('asphalt', 0.35, 0.25, RWY.w, RWY.z);
+const paveFront = strip('active', 0.35, 0.3, RWY.w, RWY.z);
+// Markings: centre-line dashes, threshold bars and touchdown blocks.
+const markings = new THREE.Group();
+scene.add(markings);
+for (let x = RWY.x0 + 14; x < RWY.x1 - 14; x += 7) mesh(box(3.5, 0.05, 0.4), 'marking', markings).position.set(x, 0.63, RWY.z);
+for (const end of [RWY.x0 + 3, RWY.x1 - 3]) for (let k = -4; k <= 4; k++) if (k) mesh(box(5, 0.05, 0.55), 'marking', markings).position.set(end, 0.63, RWY.z + k * 1.15);
+for (const end of [RWY.x0 + 18, RWY.x1 - 18]) for (const s of [1, -1]) mesh(box(6, 0.05, 1.4), 'marking', markings).position.set(end, 0.63, RWY.z + s * 3);
+markings.children.forEach((m, i) => (m.userData.order = m.position.x));
+
+const TWY = { x: 22, w: 9, z0: RWY.z - RWY.w / 2, z1: -6 };
+const taxiway = mesh(new THREE.BoxGeometry(TWY.w, 0.5, 1).translate(0, 0.25, -0.5), 'asphalt');
+taxiway.position.set(TWY.x, 0, TWY.z0);
+const APRON = { x0: -14, x1: 42, z0: -6, z1: -15 };
+const apron = mesh(new THREE.BoxGeometry(1, 0.45, APRON.z0 - APRON.z1).translate(0.5, 0.225, 0), 'concrete');
+apron.position.set(APRON.x0, 0, (APRON.z0 + APRON.z1) / 2);
+
+// ------------------------------------------------------------------ terminal: columns → slabs → roof → glass
+const TERM = { x0: -46, x1: 6, z0: -18, z1: -34, floor: 5 };
+const term = new THREE.Group();
+scene.add(term);
+const tCols = [], tSlabs = [], tGlass = [];
+const tW = TERM.x1 - TERM.x0, tD = TERM.z0 - TERM.z1;
+for (let fl = 0; fl < 2; fl++) {
+  for (let i = 0; i <= 8; i++) for (let j = 0; j <= 2; j++) {
+    const c = mesh(box(0.6, TERM.floor, 0.6), 'concrete', term);
+    c.position.set(TERM.x0 + (tW * i) / 8, fl * TERM.floor + TERM.floor / 2, TERM.z1 + (tD * j) / 2);
+    c.userData.fl = fl;
+    tCols.push(c);
+  }
+  const s = mesh(box(tW + 1.6, 0.5, tD + 1.6), 'slab', term);
+  s.position.set((TERM.x0 + TERM.x1) / 2, (fl + 1) * TERM.floor, (TERM.z0 + TERM.z1) / 2);
+  tSlabs.push(s);
+}
+// Wave roof: a row of arched panels.
+const roof = new THREE.Group();
+term.add(roof);
+const ROOF_R = tD * 0.98;
+for (let i = 0; i < 13; i++) {
+  const x = TERM.x0 - 2 + ((tW + 4) * i) / 12;
+  // Arc centred on the top of a cylinder whose axis runs along x; spans the terminal depth.
+  const seg = mesh(new THREE.CylinderGeometry(ROOF_R, ROOF_R, (tW + 4) / 12 + 0.05, 24, 1, true, Math.PI / 2 - 0.55, 1.1).rotateZ(Math.PI / 2), 'slab', roof);
+  seg.position.set(x, 2 * TERM.floor + 0.6 - ROOF_R * Math.cos(0.55) + Math.sin(i * 0.8) * 0.4, (TERM.z0 + TERM.z1) / 2);
+}
+// Glass curtain wall on the airside (+z) face, two storeys of panels.
+for (let fl = 0; fl < 2; fl++) for (let i = 0; i < 16; i++) {
+  const g = mesh(box(tW / 16 - 0.25, TERM.floor - 0.6, 0.15), 'glass', term);
+  g.position.set(TERM.x0 + (tW * (i + 0.5)) / 16, fl * TERM.floor + TERM.floor / 2, TERM.z0 + 0.5);
+  g.userData.order = fl * 16 + i;
+  tGlass.push(g);
+}
+
+// ------------------------------------------------------------------ control tower
+const TWR = new THREE.Vector3(36, 0, -30), TWR_H = 24;
+const towerShaft = mesh(new THREE.CylinderGeometry(1.8, 2.4, 1, 20).translate(0, 0.5, 0), 'concrete');
+towerShaft.position.copy(TWR);
+const towerCab = new THREE.Group();
+towerCab.position.set(TWR.x, TWR_H, TWR.z);
+scene.add(towerCab);
+mesh(new THREE.CylinderGeometry(3.6, 2.4, 1.2, 20), 'concrete', towerCab).position.y = 0.6;
+mesh(new THREE.CylinderGeometry(4, 3.6, 3, 20, 1, true), 'glass', towerCab).position.y = 2.7;
+mesh(new THREE.CylinderGeometry(4.4, 4.4, 0.5, 20), 'slab', towerCab).position.y = 4.4;
+mesh(new THREE.CylinderGeometry(0.15, 0.15, 3, 8), 'concrete', towerCab).position.y = 6.1;
+
+// ------------------------------------------------------------------ machines, workers, aircraft
+const loader = new GLTFLoader();
+const mixers = [];
+const ORIG = {
+  body: std('#f2b705', { roughness: 0.55, side: THREE.DoubleSide }),
+  dark: std('#2b2f36'),
+  glass: std('#6f93b5', { roughness: 0.15, metalness: 0.3, transparent: true, opacity: 0.75 }),
+  steel: std('#a9b0ba', { roughness: 0.4, metalness: 0.5 }),
+  light: std('#fff7c2', { emissive: '#ffd84a', emissiveIntensity: 0.6 }),
+};
+const MAQ_SET = {
+  body: MAQ,
+  dark: std('#aeb6c2', { roughness: 0.9 }),
+  glass: std('#9fb6cc', { roughness: 0.2, transparent: true, opacity: 0.55 }),
+  steel: std('#dfe4eb', { roughness: 0.5, metalness: 0.15 }),
+  light: ACCENT,
+};
+function fit(obj, h, kind) {
+  // The 747 model comes pitched ~30° nose-up; level it before measuring.
+  if (kind === 'plane') obj.rotateX(Math.PI / 6);
+  obj.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(obj, true);
+  const size = b.getSize(new THREE.Vector3());
+  obj.scale.multiplyScalar(kind === 'plane' ? h / Math.max(size.x, size.z) : h / size.y);
+  obj.updateMatrixWorld(true);
+  b.setFromObject(obj, true);
+  const c = b.getCenter(new THREE.Vector3());
+  obj.position.sub(new THREE.Vector3(c.x, b.min.y, c.z));
+  const wrap = new THREE.Group();
+  wrap.add(obj);
+  wrap.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = o.receiveShadow = true;
+    o.userData.origMat = o.material;
+    o.userData.maqMat = kind === 'worker' ? ACCENT : kind === 'plane' ? PLANE_MAQ : MAQ;
+    o.userData.bpMat = kind === 'worker' ? BP.worker : kind === 'plane' ? BP.plane : BP.machine;
+  });
+  scene.add(wrap);
+  return wrap;
+}
+const [dozerG, workerA, workerB, planeG] = await Promise.all(['bulldozer-a', 'worker-a', 'worker-b', 'boeing-747'].map(f => loader.loadAsync(`models/${f}.glb`)));
+const dozer = fit(dozerG.scene, 3.2);
+const plane = fit(planeG.scene, 34, 'plane');
+
+function worker(src, clipName) {
+  const w = fit(SkeletonUtils.clone(src.scene), 1.8, 'worker');
+  const mixer = new THREE.AnimationMixer(w.children[0]);
+  mixer.clipAction(src.animations.find(a => a.name.endsWith('|' + clipName)) || src.animations[0]).play();
+  mixers.push(mixer);
+  return w;
+}
+const rwyWorkers = [worker(workerA, 'Walk'), worker(workerB, 'Idle')];
+const termWorkers = [worker(workerB, 'Walk'), worker(workerA, 'Walk'), worker(workerB, 'Interact')];
+
+const { build, spinners } = createMachines(ORIG, MAQ_SET);
+const BP_OF = new Map([[ORIG.body, BP.machine], [ORIG.dark, BP.dark], [ORIG.glass, BP.glass], [ORIG.steel, BP.steel], [ORIG.light, BP.light]]);
+function proc(name) {
+  const g = build[name]();
+  g.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.userData.origMat = o.userData.orig; o.userData.maqMat = o.userData.maq; o.userData.bpMat = BP_OF.get(o.userData.orig); } });
+  scene.add(g);
+  return g;
+}
+const grader = proc('grader');
+const paver = proc('paver');
+const roller = proc('roller');
+const pump = proc('pump');
+pump.position.set(-24, 0, -9);
+pump.rotation.y = Math.PI / 2 + 0.2;
+const mixerTruck = proc('mixer');
+mixerTruck.position.set(-6, 0, -9);
+mixerTruck.rotation.y = Math.PI;
+
+// ------------------------------------------------------------------ edges, look switch
+const edgeTargets = [];
+scene.traverse(o => { if (o.isMesh && !o.isSkinnedMesh && !o.userData.noEdges) edgeTargets.push(o); });
+for (const o of edgeTargets) {
+  const e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 30), BP_EDGE);
+  e.userData.bpOnly = true;
+  o.add(e);
+}
+const BG = { orig: '#0b1220', maq: '#0b1220', bp: '#0a1f44' };
+function setMode(mode) {
+  MODE = mode;
+  const i = IDX[mode];
+  scene.traverse(o => {
+    if (o.userData.bpOnly) o.visible = mode === 'bp';
+    if (!o.isMesh) return;
+    if (o.userData.mat) o.material = M[o.userData.mat][i];
+    else if (o.userData.maqMat) o.material = [o.userData.origMat, o.userData.maqMat, o.userData.bpMat][i];
+  });
+  scene.background = mode === 'bp' ? backdrop.texture : new THREE.Color(BG[mode]);
+  scene.fog.color.set(BG[mode]);
+  for (const k of Object.keys(IDX)) document.getElementById(k).setAttribute('aria-pressed', k === mode);
+}
+for (const k of Object.keys(IDX)) document.getElementById(k).onclick = () => setMode(k);
+setMode(MODE);
+
+// ------------------------------------------------------------------ construction state from progress c (0..1)
+const pingpong = t => { const f = t % 2; return f < 1 ? f : 2 - f; };
+const phaseText = c => {
+  if (c < 0.05) return '<b>Hazırlık</b> · saha temizliği ve aplikasyon';
+  if (c < 0.2) return `<b>Pist altyapısı</b> · toprak işleri ve alt temel · pist %${Math.round(ramp(c, 0.05, 0.45) * 100)}`;
+  if (c < 0.7) return `<b>Asfalt</b> · pist kaplaması, apron ve taksi yolu · terminal ${c < 0.5 ? 'iskelet' : 'döşemeler'}`;
+  if (c < 0.9) return '<b>Bitirme</b> · pist işaretleri, terminal cephesi ve kule kabini';
+  return '<b>Açılış</b> · ilk uçak iniyor';
+};
+const PLANE_YAW = -Math.PI / 2; // turns the model's nose to +x, the landing direction
+
+function update(c, t) {
+  const xb = RWY.x0 + (RWY.x1 - RWY.x0) * ramp(c, 0.05, 0.45);
+  const xa = RWY.x0 + (RWY.x1 - RWY.x0) * ramp(c, 0.2, 0.68);
+  rwyBase.scale.x = Math.max(xb - RWY.x0, 0.01);
+  rwyBase.visible = xb > RWY.x0 + 0.05;
+  rwyAsphalt.scale.x = Math.max(xa - RWY.x0 - 3, 0.01);
+  rwyAsphalt.visible = xa > RWY.x0 + 3;
+  const paving = c > 0.2 && c < 0.68;
+  paveFront.visible = paving;
+  paveFront.position.x = Math.max(RWY.x0, xa - 3);
+  paveFront.scale.x = Math.min(3, xa - RWY.x0);
+  // Markings appear from west to east.
+  const xm = RWY.x0 + (RWY.x1 - RWY.x0) * ramp(c, 0.7, 0.85);
+  markings.children.forEach(m => (m.visible = m.userData.order < xm));
+  // Taxiway grows towards the apron; apron spreads along x.
+  const tw = (TWY.z0 - TWY.z1) * ramp(c, 0.45, 0.62);
+  taxiway.scale.z = Math.max(tw, 0.01);
+  taxiway.visible = tw > 0.05;
+  const ap = (APRON.x1 - APRON.x0) * ramp(c, 0.5, 0.78);
+  apron.scale.x = Math.max(ap, 0.01);
+  apron.visible = ap > 0.05;
+  // Terminal: ground-floor columns, slab 1, upper columns, slab 2, roof, glazing.
+  tCols.forEach(col => {
+    const k = ramp(c, col.userData.fl ? 0.42 : 0.15, col.userData.fl ? 0.52 : 0.3);
+    col.visible = k > 0.01;
+    col.scale.y = Math.max(k, 0.01);
+    col.position.y = col.userData.fl * TERM.floor + (TERM.floor * k) / 2;
+  });
+  tSlabs[0].visible = c > 0.32;
+  tSlabs[1].visible = c > 0.55;
+  roof.visible = c > 0.62;
+  roof.children.forEach((r, i) => (r.visible = i / roof.children.length < ramp(c, 0.62, 0.72)));
+  tGlass.forEach(g => (g.visible = g.userData.order / tGlass.length < ramp(c, 0.72, 0.86)));
+  // Tower shaft, then cab.
+  const th = TWR_H * ramp(c, 0.25, 0.75);
+  towerShaft.scale.y = Math.max(th, 0.01);
+  towerShaft.visible = th > 0.05;
+  towerCab.visible = c > 0.78;
+
+  // Machines follow their work fronts and leave when done.
+  const onRunway = c < 0.86;
+  grader.visible = c > 0.03 && c < 0.47;
+  grader.position.set(Math.min(xb + 4 + pingpong(t / 5) * 6, RWY.x1), 0.35, RWY.z + 2.5);
+  grader.rotation.y = 0;
+  dozer.visible = c > 0.03 && c < 0.45;
+  dozer.position.set(Math.min(xb + 14, RWY.x1 + 6), 0, RWY.z - 3);
+  dozer.rotation.y = Math.PI; // along the runway axis, blade towards the work front (+x)
+  paver.visible = paving;
+  paver.position.set(xa + 2, 0.35, RWY.z);
+  roller.visible = paving;
+  roller.position.set(Math.max(RWY.x0 + 3, xa - 8 - pingpong(t / 4) * 6), 0.6, RWY.z + (pingpong(t / 9) - 0.5) * 6);
+  pump.visible = mixerTruck.visible = c > 0.28 && c < 0.6;
+  rwyWorkers.forEach((w, i) => {
+    w.visible = onRunway && c > 0.05;
+    w.position.set((paving ? xa : xb) - 4 - i * 2, 0.6, RWY.z + RWY.w / 2 + 1 + i);
+    w.rotation.y = i ? -Math.PI / 2 : Math.PI / 2 + pingpong(t / 6) * 0.3;
+  });
+  termWorkers.forEach((w, i) => {
+    w.visible = c > 0.15 && c < 0.88;
+    const k = t / (10 + i * 3) + i * 0.7;
+    w.position.set(TERM.x0 + 6 + i * 14 + (i < 2 ? pingpong(k) * 10 : 0), 0, TERM.z0 + 3 + i);
+    w.rotation.y = i < 2 ? (k % 2 < 1 ? Math.PI / 2 : -Math.PI / 2) : Math.PI;
+  });
+
+  // First landing in the last 10 %: approach from the west, flare, touch down, roll out.
+  const lk = clamp01((c - 0.9) / 0.1);
+  plane.visible = c >= 0.9;
+  if (plane.visible) {
+    const xTouch = RWY.x0 + 14;
+    if (lk < 0.5) {
+      const a = lk / 0.5;
+      plane.position.set(THREE.MathUtils.lerp(-150, xTouch, a), 0.6 + 26 * (1 - smooth(a)), RWY.z);
+      plane.rotation.set(0, PLANE_YAW, 0.06 * (1 - a));
+    } else {
+      const a = (lk - 0.5) / 0.5;
+      plane.position.set(xTouch + 60 * (1 - (1 - a) * (1 - a)), 0.6, RWY.z);
+      plane.rotation.set(0, PLANE_YAW, 0);
+    }
+  }
+  document.getElementById('phase').innerHTML = phaseText(c);
+}
+
+// ------------------------------------------------------------------ EVM: the runway becomes the time axis
+const SC = scenario({ months: 24, today: 14, rate: 12.5 / 14, cpi: 0.98 });
+const chart = createEvmChart(SC, {
+  origin: new THREE.Vector3(RWY.x0 + 6, 0.7, RWY.z), axis: new THREE.Vector3(1, 0, 0), len: RWY.x1 - RWY.x0 - 12, height: 34,
+  columns: false, ac: false, es: true,
+  kpis: [
+    { name: 'SPI(t)', value: fmt(SC.spiT), sub: 'zamana dayalı takvim performansı', m: 18.5, v: 40 },
+    { name: 'Gecikme', value: `${fmt(SC.today - SC.es, 1)} ay`, sub: 'Earned Schedule · kazanılan zaman', m: 18.5, v: 12 },
+  ],
+  labelAt: { pv: [19, 0, 3.5], ev: [8, 0, 6] },
+});
+scene.add(chart.group);
+document.querySelectorAll('.evm-label.kpi')[1]?.classList.add('warn');
+const CHART_TGT = new THREE.Vector3(0, 18, RWY.z), CHART_DIR = new THREE.Vector3(0, 31, 160).normalize(), CHART_SIZE = { w: 108, h: 46 };
+const CHART_CAM = new THREE.Vector3();
+// Camera distance that fits the chart: by its height, and by the free width (on the landing page the caption takes the left third).
+function fitChartCam() {
+  const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const free = EMBED && camera.aspect > 1.2 ? 0.64 : 0.92;
+  const d = Math.max(CHART_SIZE.h / 2 / t / 0.9, CHART_SIZE.w / 2 / (t * camera.aspect) / free);
+  CHART_CAM.copy(CHART_TGT).addScaledVector(CHART_DIR, d);
+  sheet.place(camera, CHART_TGT, CHART_DIR, d);
+}
+// Engineering drawing sheet behind the chart.
+const sheet = createSheet('airport');
+scene.add(sheet.mesh);
+const TODAY_X = chart.P(SC.today, 0).x;
+
+const fadeMats = new Set([MAQ, ACCENT, BP_EDGE, PLANE_MAQ, ...Object.values(BP), ...Object.values(MAQ_SET), ...Object.values(ORIG), ...Object.values(M).flat()]);
+scene.traverse(o => { if (o.isLineSegments && o.material && !o.material.userData.base) fadeMats.add(o.material); });
+for (const mt of fadeMats) { mt.userData.baseOpacity = mt.opacity; mt.userData.baseTransparent = mt.transparent; }
+// The plane and the runway asphalt stay bright: they are the "today" marker and the time axis.
+const keep = new Set([BP.plane, PLANE_MAQ, M.asphalt[2], M.active[2]]);
+function fadeSite(f) {
+  for (const mt of fadeMats) {
+    const ff = keep.has(mt) ? 1 : f;
+    mt.transparent = ff < 1 ? true : mt.userData.baseTransparent;
+    mt.opacity = mt.userData.baseOpacity * ff;
+    mt.depthWrite = ff > 0.6;
+  }
+}
+
+const T = { evmIn: 0.5, evmShown: 0.75, evmOut: 0.82 };
+const C_TODAY = 0.55;
+function stage(P) {
+  if (P < T.evmIn) return { c: (C_TODAY * P) / T.evmIn, cam: 0, fade: 0, k: 0, chartFade: 0, mark: 0, evm: false };
+  if (P < T.evmShown) {
+    const u = (P - T.evmIn) / (T.evmShown - T.evmIn);
+    return { c: C_TODAY, cam: smooth(clamp01(u / 0.25)), fade: smooth(clamp01((u - 0.1) / 0.25)), k: clamp01((u - 0.25) / 0.75), chartFade: 1, mark: smooth(clamp01((u - 0.55) / 0.2)), evm: true };
+  }
+  if (P < T.evmOut) {
+    const w = (P - T.evmShown) / (T.evmOut - T.evmShown);
+    return { c: C_TODAY, cam: 1 - smooth(clamp01((w - 0.3) / 0.7)), fade: 1 - smooth(clamp01((w - 0.4) / 0.5)), k: 1, chartFade: 1 - smooth(clamp01(w / 0.4)), mark: 1 - smooth(clamp01(w / 0.3)), evm: true };
+  }
+  return { c: C_TODAY + ((1 - C_TODAY) * (P - T.evmOut)) / (1 - T.evmOut), cam: 0, fade: 0, k: 0, chartFade: 0, mark: 0, evm: false };
+}
+
+let home = null;
+function moveCamera(cam) {
+  if (cam > 0 && !home) { home = { p: camera.position.clone(), t: controls.target.clone() }; controls.enabled = false; fitChartCam(); }
+  if (!home) return;
+  camera.position.lerpVectors(home.p, CHART_CAM, smooth(cam));
+  controls.target.lerpVectors(home.t, CHART_TGT, smooth(cam));
+  camera.lookAt(controls.target);
+  if (cam <= 0) { camera.position.copy(home.p); controls.target.copy(home.t); home = null; controls.enabled = true; }
+}
+// During the chart the plane taxis onto the runway at "today" and serves as its marker.
+function planeMarker(mark) {
+  plane.scale.setScalar(1 - 0.45 * smooth(mark));
+  if (mark <= 0) return;
+  plane.visible = true;
+  plane.position.set(TODAY_X - 30 * (1 - smooth(mark)), 0.6, RWY.z);
+  plane.rotation.set(0, PLANE_YAW, 0);
+}
+const evmText = () => `<b>Ölçüm · ay ${SC.today}</b> · plana göre bugün %${Math.round(SC.pv(SC.today))} bitmiş olmalıydı, kazanılan %${Math.round(SC.ev(SC.today))}. Earned Schedule: bu değere plan ay ${fmt(SC.es, 1)}'de ulaşmıştı → ${fmt(SC.today - SC.es, 1)} ay geride, SPI(t) ${fmt(SC.spiT)}. Janus: bu hızla bitiş ay ${Math.round(SC.months / SC.spiT)} (plan ${SC.months}).`;
+
+// ------------------------------------------------------------------ loop
+let progress = 0, playing = !EMBED;
+const range = document.getElementById('prog');
+const playBtn = document.getElementById('play');
+range.addEventListener('input', () => { progress = range.value / 1000; });
+playBtn.onclick = () => {
+  playing = !playing;
+  playBtn.textContent = playing ? '❚❚' : '▶';
+  playBtn.setAttribute('aria-pressed', playing);
+};
+function syncSize() {
+  const cv = renderer.domElement;
+  if (cv.clientWidth === innerWidth && cv.clientHeight === innerHeight) return;
+  camera.aspect = innerWidth / Math.max(innerHeight, 1);
+  camera.fov = camera.aspect < 1 ? 50 : 32;
+  // Embedded on a wide screen: shift the picture right so the caption panel on the left does not cover it.
+  if (EMBED && camera.aspect > 1.2) camera.setViewOffset(innerWidth, innerHeight, -innerWidth * 0.16, 0, innerWidth, innerHeight);
+  else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
+  backdrop.resize(camera.aspect);
+}
+const clock = new THREE.Clock();
+let simT = 0;
+// Compile every material once up front (also the ones that are still hidden, e.g. the chart), so nothing compiles mid-animation.
+// Draw it once with everything shown, so geometry and textures are on the GPU before the scene is visible.
+{ const hid = [], cull = []; scene.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; } if (o.frustumCulled) { cull.push(o); o.frustumCulled = false; } });
+  renderer.compile(scene, camera); renderer.render(scene, camera);
+  hid.forEach(o => { o.visible = false; }); cull.forEach(o => { o.frustumCulled = true; }); }
+let lastPhase = '', warm = 0;
+renderer.setAnimationLoop(() => {
+  if (window.__hidden && warm > 2) { clock.getDelta(); return; }
+  warm++;
+  syncSize();
+  const dt = Math.min(clock.getDelta(), 0.1);
+  if (playing) {
+    progress = progress >= 1 ? 0 : Math.min(1, progress + dt / 60);
+    range.value = Math.round(progress * 1000);
+  }
+  const st = stage(progress);
+  const sdt = st.evm ? 0 : dt;
+  simT += sdt;
+  update(st.c, simT);
+  fadeSite(1 - 0.92 * st.fade);
+  sheet.set(0.9 * st.fade);
+  renderer.shadowMap.autoUpdate = st.fade < 0.3; // (toggling sun.castShadow would recompile every shader)
+  chart.set(st.k, st.chartFade);
+  planeMarker(st.mark);
+  moveCamera(st.cam);
+  if (st.evm && st.k > 0.6) { const h = evmText(); if (h !== lastPhase) document.getElementById('phase').innerHTML = lastPhase = h; }
+  document.getElementById('pct').textContent = Math.round(progress * 100) + '%';
+  document.getElementById('note').style.opacity = st.chartFade > 0.5 ? 1 : 0;
+  mixers.forEach(m => m.update(sdt));
+  for (const s of spinners) {
+    if (s.swing) s.obj.rotation[s.axis] = s.swing[0] + Math.sin(simT * s.speed) * s.swing[1];
+    else s.obj.rotation[s.axis] += s.speed * sdt;
+  }
+  if (controls.enabled) controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+});
+Object.assign(window, { __ready: true, THREE, camera, controls, plane, chart, SC, setProgress: v => { progress = v; playing = false; range.value = Math.round(v * 1000); } });
+</script>
+</body>
+</html>

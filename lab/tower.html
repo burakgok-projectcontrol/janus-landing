@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Janus gökdelen sahnesi</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0a1f44; color: #e6edf7; font: 14px/1.4 system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; }
+  .top { position: fixed; top: 12px; left: 12px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 2; }
+  button { background: #131f36; color: inherit; border: 1px solid #22304d; border-radius: 8px; padding: 8px 12px; cursor: pointer; font: inherit; }
+  button[aria-pressed="true"] { background: linear-gradient(135deg, #22d3ee, #7c3aed); border-color: transparent; color: #fff; }
+  .bar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(720px, calc(100% - 32px)); background: rgba(19, 31, 54, .88); border: 1px solid #22304d; border-radius: 14px; padding: 12px 16px; display: grid; grid-template-columns: auto 1fr auto; gap: 8px 14px; align-items: center; backdrop-filter: blur(8px); z-index: 2; }
+  .bar .phase { grid-column: 1 / -1; color: #9fb0c9; font-size: 13px; }
+  .bar .phase b { color: #e6edf7; font-weight: 600; }
+  .pct { font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: #22d3ee; }
+  .labels-layer { position: fixed; inset: 0; pointer-events: none; z-index: 1; }
+  .evm-label { font: 600 12px/1.2 system-ui, sans-serif; color: #e6edf7; white-space: nowrap; transition: opacity .35s; text-shadow: 0 1px 6px #0a1f44; }
+  .evm-label.pv { color: #c4b5fd; }
+  .evm-label.ev { color: #67e8f9; }
+  .evm-label.ac { color: #fcd34d; }
+  .evm-label.kpi { background: rgba(10, 31, 68, .85); border: 1px solid #22d3ee; border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+  .evm-label.kpi.warn { border-color: #fbbf24; }
+  .evm-label.kpi b { font-size: 22px; margin-left: 6px; color: #67e8f9; }
+  .evm-label.kpi.warn b { color: #fcd34d; }
+  .evm-label.kpi span { display: block; font-weight: 400; font-size: 11px; color: #9fb0c9; margin-top: 2px; }
+  .note { position: fixed; top: 60px; left: 12px; font-size: 12px; color: #9fb0c9; z-index: 2; opacity: 0; transition: opacity .4s; }
+  .embed .top, .embed .bar { display: none; }
+  .embed .note { top: auto; bottom: 14px; left: auto; right: 16px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="top">
+  <button id="orig" aria-pressed="false">Orijinal renkler</button>
+  <button id="maq" aria-pressed="false">Maket malzemesi</button>
+  <button id="bp" aria-pressed="true">Blueprint</button>
+</div>
+<div class="note" id="note">Örnek senaryo · temsilî değerler</div>
+<div class="bar">
+  <button id="play" aria-pressed="true" aria-label="Oynat / duraklat">❚❚</button>
+  <input id="prog" type="range" min="0" max="1000" value="0" aria-label="Yapım ilerlemesi">
+  <span class="pct" id="pct">0%</span>
+  <div class="phase" id="phase"></div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { createMachines } from './machines.js';
+import { fmt } from './evm.js';
+import { createSheet, createBackdrop } from './sheet.js';
+
+// ?embed: driven by the landing page (no own controls, progress set from outside); ?lite: lighter rendering for phones.
+const QS = new URLSearchParams(location.search);
+const EMBED = QS.has('embed'), LITE = QS.has('lite');
+if (EMBED) document.body.classList.add('embed');
+
+// World in metres. The tower stands at the origin on a city block; crane on its west side, cost stacks further west.
+const FLOORS = 20, FH = 3.5, W = 18, CORE = 6;
+const SIZE_X = 130, SIZE_Z = 100;
+const smooth = t => t * t * (3 - 2 * t);
+const clamp01 = t => Math.min(1, Math.max(0, t));
+const ramp = (c, a, b) => smooth(clamp01((c - a) / (b - a)));
+const floorAt = i => 0.06 + (0.84 * i) / FLOORS; // progress at which floor i (0-based) starts
+
+// ------------------------------------------------------------------ renderer, camera, light
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, LITE ? 1.25 : 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.domElement.className = 'labels-layer';
+document.body.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+const backdrop = createBackdrop('tower'); // blueprint paper behind the whole scene
+scene.background = new THREE.Color('#0a1f44');
+scene.fog = new THREE.Fog('#0a1f44', 220, 460);
+const camera = new THREE.PerspectiveCamera(32, 1, 1, 1500);
+camera.position.set(112, 72, 150);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(-10, 32, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.49;
+
+scene.add(new THREE.HemisphereLight('#dbe7ff', '#1a2440', 1.1));
+const sun = new THREE.DirectionalLight('#ffffff', 2.3);
+sun.position.set(60, 120, 80);
+sun.castShadow = true;
+sun.shadow.mapSize.setScalar(LITE ? 1024 : 4096);
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.05;
+Object.assign(sun.shadow.camera, { left: -80, right: 80, top: 100, bottom: -60, near: 10, far: 320 });
+scene.add(sun);
+
+// ------------------------------------------------------------------ materials: original / maquette / blueprint
+const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
+const bp = (color, extra = {}) => std(color, { roughness: 1, ...extra });
+const MAQ = std('#f2f4f8', { side: THREE.DoubleSide });
+const ACCENT = std('#22d3ee', { roughness: 0.6, emissive: '#0b4f5c', emissiveIntensity: 0.3 });
+const BP_EDGE = new THREE.LineBasicMaterial({ color: '#cfe8ff', transparent: true, opacity: 0.7 });
+const BP = {
+  machine: bp('#1a4589', { side: THREE.DoubleSide }),
+  dark: bp('#10306a'),
+  glass: bp('#22d3ee', { transparent: true, opacity: 0.25, emissive: '#22d3ee', emissiveIntensity: 0.2 }),
+  steel: bp('#2b62b5'),
+  light: bp('#22d3ee', { emissive: '#22d3ee', emissiveIntensity: 1 }),
+  worker: bp('#5eead4', { emissive: '#22d3ee', emissiveIntensity: 0.7 }),
+};
+const M = {
+  ground: [std('#8d9478'), std('#d5dce6'), bp('#123468')],
+  street: [std('#3d4249'), std('#c4ccd8'), bp('#0e2c5e')],
+  skirt: [std('#7a6a52'), std('#c9d1dc'), bp('#0d2957')],
+  base: [std('#4b3f31'), std('#aab4c2'), bp('#0a2250')],
+  city: [std('#9aa3ad'), std('#e7ebf1'), bp('#16407f', { transparent: true, opacity: 0.85 })],
+  concrete: [std('#b8bcc2'), std('#f7f8fb'), bp('#1f539e')],
+  slab: [std('#a9adb3'), std('#eef1f6'), bp('#1c4d96')],
+  active: [std('#c9a876', { emissive: '#3a2a10', emissiveIntensity: 0.2 }), std('#a5f3fc', { emissive: '#0e7490', emissiveIntensity: 0.35 }), bp('#1e9fd0', { emissive: '#22d3ee', emissiveIntensity: 0.35, transparent: true, opacity: 0.85 })],
+  glass: [std('#6f93b5', { transparent: true, opacity: 0.6, roughness: 0.15, metalness: 0.3, emissive: '#ffd27a', emissiveIntensity: 0 }), std('#9fb6cc', { transparent: true, opacity: 0.55, roughness: 0.2, emissive: '#22d3ee', emissiveIntensity: 0 }), bp('#22d3ee', { transparent: true, opacity: 0.22, emissive: '#22d3ee', emissiveIntensity: 0.25 })],
+  steelLoad: [std('#7d8590'), std('#cfd6e0'), bp('#2b62b5')],
+};
+const IDX = { orig: 0, maq: 1, bp: 2 };
+let MODE = 'bp';
+function mesh(geo, key, parent = scene) {
+  const m = new THREE.Mesh(geo, M[key][IDX[MODE]]);
+  m.userData.mat = key;
+  m.castShadow = m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+
+// ------------------------------------------------------------------ ground, streets, city context
+const groundM = mesh(box(SIZE_X, 0.4, SIZE_Z), 'ground');
+groundM.position.y = -0.2;
+groundM.userData.noEdges = true;
+mesh(box(SIZE_X + 4, 3.6, SIZE_Z + 4), 'base').position.y = -2.2;
+for (const z of [-34, 30]) mesh(box(SIZE_X, 0.06, 9), 'street').position.set(0, 0.03, z);
+for (const x of [24, -56]) mesh(box(9, 0.06, SIZE_Z), 'street').position.set(x, 0.03, 0);
+// Context blocks (deterministic "random" heights), kept clear of the site and the cost stacks.
+const rnd = (i => () => ((i = (i * 9301 + 49297) % 233280) / 233280))(7);
+for (let x = -60; x <= 60; x += 12) for (let z = -46; z <= 46; z += 12) {
+  const site = x > -50 && x < 18 && z > -26 && z < 24;
+  if (site || Math.abs(z + 34) < 7 || Math.abs(z - 30) < 7 || Math.abs(x - 24) < 7 || Math.abs(x + 56) < 6) continue;
+  const h = 6 + rnd() * 22;
+  const b = mesh(box(8 + rnd() * 2, h, 8 + rnd() * 2), 'city');
+  b.position.set(x, h / 2, z);
+}
+
+// ------------------------------------------------------------------ the tower: raft, core, floors, façade, crown
+const raft = mesh(box(W + 4, 1.2, W + 4), 'concrete');
+raft.position.y = 0.6;
+const core = mesh(box(CORE, 1, CORE).translate(0, 0.5, 0), 'concrete');
+core.position.y = 1.2;
+const floors = [];
+const colXZ = [-W / 2, -W / 6, W / 6, W / 2];
+for (let i = 0; i < FLOORS; i++) {
+  const g = new THREE.Group();
+  g.position.y = 1.2 + i * FH;
+  scene.add(g);
+  const cols = new THREE.Group();
+  g.add(cols);
+  for (const x of colXZ) for (const z of colXZ) if (Math.abs(x) === W / 2 || Math.abs(z) === W / 2) mesh(box(0.6, FH, 0.6), 'concrete', cols).position.set(x, FH / 2, z);
+  const slab = mesh(box(W + 0.8, 0.35, W + 0.8), 'slab', g);
+  slab.position.y = FH;
+  slab.userData.base = 'slab';
+  const facade = new THREE.Group();
+  g.add(facade);
+  for (const [nx, nz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const p = mesh(box(nz ? W : 0.12, FH - 0.5, nx ? W : 0.12), 'glass', facade);
+    p.position.set((nx * (W + 0.5)) / 2, FH / 2 + 0.1, (nz * (W + 0.5)) / 2);
+    p.castShadow = false;
+    for (let k = -1; k <= 1; k++) {
+      const mu = mesh(box(nz ? 0.18 : 0.2, FH - 0.4, nx ? 0.18 : 0.2), 'concrete', facade);
+      mu.position.set(nx ? (nx * (W + 0.6)) / 2 : (k * W) / 3, FH / 2 + 0.1, nz ? (nz * (W + 0.6)) / 2 : (k * W) / 3);
+    }
+  }
+  floors.push({ g, cols, slab, facade, i });
+}
+const TOP_Y = 1.2 + FLOORS * FH;
+const crown = new THREE.Group();
+scene.add(crown);
+mesh(box(W - 4, 4, W - 4), 'concrete', crown).position.y = TOP_Y + 2;
+mesh(box(W - 9, 3, W - 9), 'glass', crown).position.y = TOP_Y + 5.5;
+mesh(new THREE.CylinderGeometry(0.2, 0.5, 12, 8), 'concrete', crown).position.y = TOP_Y + 13;
+
+// ------------------------------------------------------------------ machines, crane, workers
+const loader = new GLTFLoader();
+const mixers = [];
+const ORIG = {
+  body: std('#f2b705', { roughness: 0.55, side: THREE.DoubleSide }),
+  dark: std('#2b2f36'),
+  glass: std('#6f93b5', { roughness: 0.15, metalness: 0.3, transparent: true, opacity: 0.75 }),
+  steel: std('#a9b0ba', { roughness: 0.4, metalness: 0.5 }),
+  light: std('#fff7c2', { emissive: '#ffd84a', emissiveIntensity: 0.6 }),
+};
+const MAQ_SET = {
+  body: MAQ,
+  dark: std('#aeb6c2', { roughness: 0.9 }),
+  glass: std('#9fb6cc', { roughness: 0.2, transparent: true, opacity: 0.55 }),
+  steel: std('#dfe4eb', { roughness: 0.5, metalness: 0.15 }),
+  light: ACCENT,
+};
+const { build, spinners } = createMachines(ORIG, MAQ_SET);
+const BP_OF = new Map([[ORIG.body, BP.machine], [ORIG.dark, BP.dark], [ORIG.glass, BP.glass], [ORIG.steel, BP.steel], [ORIG.light, BP.light]]);
+function proc(name, opts, mats) {
+  const g = build[name](opts);
+  g.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = o.receiveShadow = true;
+    o.userData.origMat = o.userData.orig;
+    o.userData.maqMat = o.userData.maq;
+    o.userData.bpMat = (mats || BP_OF).get(o.userData.orig);
+  });
+  scene.add(g);
+  return g;
+}
+// The crane keeps its own blueprint materials: it stays bright while the site dims for the EVM view.
+const CRANE_BP = new Map([[ORIG.body, bp('#2a62b8', { side: THREE.DoubleSide })], [ORIG.dark, bp('#163d7d')], [ORIG.glass, bp('#22d3ee', { emissive: '#22d3ee', emissiveIntensity: 0.4 })], [ORIG.steel, bp('#3a74c8')], [ORIG.light, bp('#fbbf24', { emissive: '#fbbf24', emissiveIntensity: 1 })]]);
+const CRANE = new THREE.Vector3(-14, 0, 13);
+const crane = proc('towerCrane', { sections: 26 }, CRANE_BP);
+crane.position.copy(CRANE);
+const CU = crane.userData;
+const pump = proc('pump');
+pump.position.set(12, 0, 17);
+pump.rotation.y = Math.PI - 0.5;
+const mixerTruck = proc('mixer');
+mixerTruck.position.set(4, 0, 21);
+mixerTruck.rotation.y = Math.PI;
+
+// Steel bundle carried by the crane during construction.
+const bundle = new THREE.Group();
+for (let k = 0; k < 3; k++) mesh(box(6, 0.35, 0.35), 'steelLoad', bundle).position.set(0, -0.2 - k * 0.38, (k - 1) * 0.4);
+CU.load.add(bundle);
+const LAYDOWN = new THREE.Vector3(-22, 0, 22);
+const stock = new THREE.Group();
+scene.add(stock);
+for (let k = 0; k < 6; k++) mesh(box(6, 0.35, 0.35), 'steelLoad', stock).position.set(LAYDOWN.x, 0.2 + Math.floor(k / 3) * 0.38, LAYDOWN.z + 3 + (k % 3) * 0.45);
+
+function fit(obj, h, worker) {
+  obj.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(obj, true);
+  obj.scale.multiplyScalar(h / b.getSize(new THREE.Vector3()).y);
+  obj.updateMatrixWorld(true);
+  b.setFromObject(obj, true);
+  const c = b.getCenter(new THREE.Vector3());
+  obj.position.sub(new THREE.Vector3(c.x, b.min.y, c.z));
+  const wrap = new THREE.Group();
+  wrap.add(obj);
+  wrap.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = o.receiveShadow = true;
+    o.userData.origMat = o.material;
+    o.userData.maqMat = worker ? ACCENT : MAQ;
+    o.userData.bpMat = worker ? BP.worker : BP.machine;
+  });
+  scene.add(wrap);
+  return wrap;
+}
+const [workerA, workerB] = await Promise.all(['worker-a', 'worker-b'].map(f => loader.loadAsync(`models/${f}.glb`)));
+function worker(src, clip) {
+  const w = fit(SkeletonUtils.clone(src.scene), 1.8, true);
+  const mixer = new THREE.AnimationMixer(w.children[0]);
+  mixer.clipAction(src.animations.find(a => a.name.endsWith('|' + clip)) || src.animations[0]).play();
+  mixers.push(mixer);
+  return w;
+}
+const topWorkers = [worker(workerA, 'Walk'), worker(workerB, 'Walk'), worker(workerA, 'Interact')];
+const groundWorkers = [worker(workerB, 'Idle'), worker(workerA, 'Walk')];
+groundWorkers[0].position.set(LAYDOWN.x + 3, 0, LAYDOWN.z + 1);
+groundWorkers[0].rotation.y = Math.PI;
+
+// ------------------------------------------------------------------ cost stacks for the EVM view
+// Scenario "over budget": EV 60 % of BAC, CPI 0.92 → AC 65.2 %, EAC = BAC / CPI = 108.7 %.
+const SCN = { ev: 60, cpi: 0.92 };
+SCN.ac = SCN.ev / SCN.cpi;
+SCN.eac = 100 / SCN.cpi;
+SCN.vac = 100 - SCN.eac;
+const STACK_H = 40; // metres for 100 % of BAC
+const EV_POS = new THREE.Vector3(-30, 0, 6), AC_POS = new THREE.Vector3(-39, 0, 6);
+const chartMats = [];
+const cmat = (color, extra = {}) => { const m = new THREE.MeshStandardMaterial({ color, roughness: 0.6, transparent: true, ...extra }); m.userData.base = m.opacity; chartMats.push(m); return m; };
+const CM = {
+  ev: cmat('#22d3ee', { emissive: '#22d3ee', emissiveIntensity: 0.55, opacity: 0.9 }),
+  ac: cmat('#fbbf24', { emissive: '#f59e0b', emissiveIntensity: 0.5, opacity: 0.9 }),
+  eac: cmat('#fbbf24', { emissive: '#f59e0b', emissiveIntensity: 0.35, opacity: 0.35, depthWrite: false }),
+  bac: cmat('#a78bfa', { emissive: '#7c3aed', emissiveIntensity: 0.7, opacity: 0.9 }),
+};
+const edgeMat = new THREE.LineBasicMaterial({ color: '#fde68a', transparent: true, opacity: 0.9 });
+edgeMat.userData.base = 0.9;
+chartMats.push(edgeMat);
+const chart = new THREE.Group();
+scene.add(chart);
+// AC plates: one per built floor, a little thicker than the EV plates (spent more than earned).
+const builtAtToday = 12;
+const acPlates = [];
+for (let i = 0; i < builtAtToday; i++) {
+  const h = (STACK_H * SCN.ac) / 100 / builtAtToday;
+  const p = new THREE.Mesh(box(6, h - 0.06, 6), CM.ac);
+  p.position.set(AC_POS.x, h * i + h / 2, AC_POS.z);
+  p.add(new THREE.LineSegments(new THREE.EdgesGeometry(p.geometry), edgeMat));
+  chart.add(p);
+  acPlates.push(p);
+}
+const AC_TOP = (STACK_H * SCN.ac) / 100;
+const EAC_H = (STACK_H * (SCN.eac - SCN.ac)) / 100;
+const eacBlock = new THREE.Mesh(box(6, EAC_H, 6), CM.eac);
+const eacEdges = new THREE.LineSegments(new THREE.EdgesGeometry(eacBlock.geometry), new THREE.LineDashedMaterial({ color: '#fcd34d', dashSize: 0.6, gapSize: 0.4, transparent: true, opacity: 0.95 }));
+eacEdges.computeLineDistances();
+eacEdges.material.userData.base = 0.95;
+chartMats.push(eacEdges.material);
+eacBlock.add(eacEdges);
+scene.add(eacBlock);
+const bacBar = new THREE.Mesh(box(18, 0.25, 9), CM.bac);
+bacBar.position.set((EV_POS.x + AC_POS.x) / 2, STACK_H, EV_POS.z);
+chart.add(bacBar);
+
+const labels = [];
+function label(html, pos, cls, at, parent = chart) {
+  const div = document.createElement('div');
+  div.className = 'evm-label ' + cls;
+  div.innerHTML = html;
+  const o = new CSS2DObject(div);
+  o.position.copy(pos);
+  o.userData.at = at;
+  parent.add(o);
+  labels.push(o);
+  return o;
+}
+label(`EV · kazanılmış değer %${Math.round(SCN.ev)}`, new THREE.Vector3(EV_POS.x + 3, (STACK_H * SCN.ev) / 100 + 2.2, EV_POS.z + 3), 'ev', 0.45);
+label(`AC · gerçekleşen maliyet %${Math.round(SCN.ac)}`, new THREE.Vector3(AC_POS.x - 3, AC_TOP + 2.2, AC_POS.z + 3), 'ac', 0.55);
+label('BAC · bütçe %100', new THREE.Vector3(EV_POS.x + 6, STACK_H + 1.6, EV_POS.z), 'pv', 0.62);
+label(`EAC · tahmini maliyet %${fmt(SCN.eac, 0)}`, new THREE.Vector3(AC_POS.x - 1, AC_TOP + EAC_H + 2.2, AC_POS.z + 3), 'ac', 0.93);
+label(`CPI <b>${fmt(SCN.cpi)}</b><span>maliyet performansı</span>`, new THREE.Vector3(-8, 38, 6), 'kpi', 0.6);
+label(`Aşım tahmini <b>%${fmt(-SCN.vac, 1)}</b><span>VAC · EAC = BAC / CPI</span>`, new THREE.Vector3(-8, 27, 6), 'kpi warn', 0.95);
+
+// ------------------------------------------------------------------ edges, look switch
+const edgeTargets = [];
+scene.traverse(o => { if (o.isMesh && !o.isSkinnedMesh && !o.userData.noEdges && !chartMats.includes(o.material) && o !== eacBlock) edgeTargets.push(o); });
+for (const o of edgeTargets) {
+  const e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 30), BP_EDGE);
+  e.userData.bpOnly = true;
+  o.add(e);
+}
+const BG = { orig: '#0b1220', maq: '#0b1220', bp: '#0a1f44' };
+function setMode(mode) {
+  MODE = mode;
+  const i = IDX[mode];
+  scene.traverse(o => {
+    if (o.userData.bpOnly) o.visible = mode === 'bp';
+    if (!o.isMesh) return;
+    if (o.userData.mat) o.material = M[o.userData.mat][i];
+    else if (o.userData.maqMat) o.material = [o.userData.origMat, o.userData.maqMat, o.userData.bpMat][i];
+  });
+  scene.background = mode === 'bp' ? backdrop.texture : new THREE.Color(BG[mode]);
+  scene.fog.color.set(BG[mode]);
+  for (const k of Object.keys(IDX)) document.getElementById(k).setAttribute('aria-pressed', k === mode);
+}
+for (const k of Object.keys(IDX)) document.getElementById(k).onclick = () => setMode(k);
+setMode(MODE);
+
+// ------------------------------------------------------------------ construction state from progress c (0..1)
+const pingpong = t => { const f = t % 2; return f < 1 ? f : 2 - f; };
+const builtFloors = c => clamp01((c - 0.06) / 0.84) * FLOORS;
+const phaseText = c => {
+  if (c < 0.06) return '<b>Temel</b> · radye temel betonu';
+  if (c < 0.9) return `<b>Kaba yapı</b> · kat ${Math.min(FLOORS, Math.floor(builtFloors(c)) + 1)} / ${FLOORS} · çekirdek perde önde, cephe arkadan geliyor`;
+  if (c < 0.95) return '<b>Taç</b> · çatı katı ve anten';
+  return '<b>Tamamlandı</b> · bina ışıklarını yakıyor';
+};
+let cycleLoad = true;
+function update(c, t) {
+  raft.visible = c > 0.01;
+  raft.scale.y = Math.max(ramp(c, 0.01, 0.05), 0.01);
+  const nf = builtFloors(c);
+  const coreH = Math.min(FLOORS, nf + 3) * FH;
+  core.scale.y = Math.max(coreH, 0.01);
+  core.visible = c > 0.05;
+  floors.forEach(f => {
+    const k = clamp01(nf - f.i); // 0..1 progress of this floor
+    f.g.visible = k > 0;
+    f.cols.scale.y = Math.max(clamp01(k / 0.6), 0.01);
+    f.slab.visible = k > 0.55;
+    const active = k > 0.55 && k < 1 && c < 0.9;
+    f.slab.userData.mat = active ? 'active' : 'slab';
+    f.slab.material = M[f.slab.userData.mat][IDX[MODE]];
+    f.facade.visible = nf - f.i > 3.5 || c >= 0.9;
+  });
+  crown.visible = c > 0.9;
+  crown.scale.y = Math.max(ramp(c, 0.9, 0.95), 0.01);
+  // Lights on at the end.
+  const lights = ramp(c, 0.95, 1);
+  M.glass[0].emissiveIntensity = 0.9 * lights;
+  M.glass[1].emissiveIntensity = 0.6 * lights;
+  M.glass[2].emissiveIntensity = 0.25 + 0.8 * lights;
+
+  // Crane climbs with the building and cycles steel bundles from the lay-down area to the top floor.
+  const topY = 1.2 + Math.max(nf, 1) * FH;
+  CU.setSections(Math.ceil((topY + 15) / CU.sectionH));
+  const building = c > 0.06 && c < 0.9;
+  const cyc = (t % 10) / 10;
+  const pick = LAYDOWN.clone().setY(1.5), drop = new THREE.Vector3(-2, topY + 1.4, 2);
+  const high = CU.topY - 4;
+  let target, hookY;
+  if (!building) { target = new THREE.Vector3(-4, 0, 8); hookY = CU.topY - 6; cycleLoad = false; }
+  else if (cyc < 0.15) { target = pick; hookY = THREE.MathUtils.lerp(high, pick.y, smooth(cyc / 0.15)); cycleLoad = cyc > 0.12; }
+  else if (cyc < 0.3) { target = pick; hookY = THREE.MathUtils.lerp(pick.y, high, smooth((cyc - 0.15) / 0.15)); cycleLoad = true; }
+  else if (cyc < 0.5) { target = pick.clone().lerp(drop, smooth((cyc - 0.3) / 0.2)); hookY = high; cycleLoad = true; }
+  else if (cyc < 0.65) { target = drop; hookY = THREE.MathUtils.lerp(high, drop.y, smooth((cyc - 0.5) / 0.15)); cycleLoad = true; }
+  else if (cyc < 0.8) { target = drop; hookY = THREE.MathUtils.lerp(drop.y, high, smooth((cyc - 0.65) / 0.15)); cycleLoad = false; }
+  else { target = drop.clone().lerp(pick, smooth((cyc - 0.8) / 0.2)); hookY = high; cycleLoad = false; }
+  CU.point(target, hookY);
+  bundle.visible = cycleLoad && building;
+  crane.visible = c < 0.94; // dismantled once the crown is on
+
+  pump.visible = mixerTruck.visible = c > 0.02 && c < 0.45;
+  topWorkers.forEach((w, i) => {
+    w.visible = building && nf > 1;
+    const k = t / (8 + i * 2) + i * 0.5;
+    w.position.set(-6 + i * 5 + (i < 2 ? pingpong(k) * 6 : 0), 1.2 + Math.floor(nf) * FH + 0.2, -4 + i * 3);
+    w.rotation.y = i < 2 ? (k % 2 < 1 ? Math.PI / 2 : -Math.PI / 2) : 0;
+  });
+  groundWorkers.forEach(w => (w.visible = building));
+  groundWorkers[1].position.set(LAYDOWN.x + pingpong(t / 7) * 8 - 4, 0, LAYDOWN.z - 3);
+  groundWorkers[1].rotation.y = (t / 7) % 2 < 1 ? Math.PI / 2 : -Math.PI / 2;
+  document.getElementById('phase').innerHTML = phaseText(c);
+}
+
+// ------------------------------------------------------------------ EVM: floors become EV plates, crane lifts the EAC block
+const fadeMats = new Set([MAQ, ACCENT, BP_EDGE, ...Object.values(BP), ...Object.values(MAQ_SET), ...Object.values(ORIG), ...Object.values(M).flat()]);
+for (const mt of fadeMats) { mt.userData.baseOpacity = mt.opacity; mt.userData.baseTransparent = mt.transparent; }
+function fadeSite(f) {
+  for (const mt of fadeMats) {
+    mt.transparent = f < 1 ? true : mt.userData.baseTransparent;
+    mt.opacity = mt.userData.baseOpacity * f;
+    mt.depthWrite = f > 0.6;
+  }
+}
+const FLY = new THREE.MeshStandardMaterial({ color: '#22d3ee', emissive: '#22d3ee', emissiveIntensity: 0.55, transparent: true, opacity: 0.9, roughness: 0.6 });
+function flyFloors(fly) {
+  const evH = (STACK_H * SCN.ev) / 100 / builtAtToday;
+  floors.forEach(f => {
+    f.slab.position.set(0, FH, 0);
+    f.slab.scale.set(1, 1, 1);
+    f.slab.castShadow = true;
+    if (f.i >= builtAtToday || fly <= 0) return;
+    const fi = smooth(clamp01(fly * 1.6 - (f.i / builtAtToday) * 0.6));
+    if (fi <= 0) return;
+    // Target in the floor group's local space: the i-th EV plate.
+    const target = new THREE.Vector3(EV_POS.x, evH * f.i + evH / 2, EV_POS.z).sub(f.g.position);
+    f.slab.position.lerp(target, fi).add(new THREE.Vector3(0, Math.sin(Math.PI * fi) * 6, 0));
+    f.slab.scale.set(THREE.MathUtils.lerp(1, 6 / (W + 0.8), fi), THREE.MathUtils.lerp(1, (evH - 0.06) / 0.35, fi), THREE.MathUtils.lerp(1, 6 / (W + 0.8), fi));
+    f.slab.material = FLY;
+    f.slab.castShadow = false;
+    f.slab.visible = true;
+  });
+}
+
+const T = { evmIn: 0.5, evmShown: 0.75, evmOut: 0.82 };
+const C_TODAY = 0.06 + (0.84 * (builtAtToday + 0.6)) / FLOORS; // ~60 %, 12 floors done
+function stage(P) {
+  if (P < T.evmIn) return { c: (C_TODAY * P) / T.evmIn, cam: 0, fade: 0, fly: 0, k: 0, chartFade: 0, evm: false };
+  if (P < T.evmShown) {
+    const u = (P - T.evmIn) / (T.evmShown - T.evmIn);
+    return { c: C_TODAY, cam: smooth(clamp01(u / 0.25)), fade: smooth(clamp01((u - 0.1) / 0.25)), fly: clamp01((u - 0.15) / 0.35), k: clamp01((u - 0.25) / 0.75), chartFade: 1, evm: true };
+  }
+  if (P < T.evmOut) {
+    const w = (P - T.evmShown) / (T.evmOut - T.evmShown);
+    return { c: C_TODAY, cam: 1 - smooth(clamp01((w - 0.3) / 0.7)), fade: 1 - smooth(clamp01((w - 0.4) / 0.5)), fly: 1 - smooth(clamp01((w - 0.15) / 0.6)), k: 1, chartFade: 1 - smooth(clamp01(w / 0.4)), evm: true };
+  }
+  return { c: C_TODAY + ((1 - C_TODAY) * (P - T.evmOut)) / (1 - T.evmOut), cam: 0, fade: 0, fly: 0, k: 0, chartFade: 0, evm: false };
+}
+// Chart build-up k (0..1): AC plates grow, BAC bar, then the crane lifts the EAC block onto the AC stack.
+function setChart(k, fade) {
+  chart.visible = fade > 0.01 && k > 0;
+  for (const m of chartMats) m.opacity = m.userData.base * fade;
+  acPlates.forEach((p, i) => (p.visible = k > 0.35 + (0.2 * i) / acPlates.length));
+  bacBar.visible = k > 0.58;
+  for (const l of labels) { l.element.style.opacity = k >= l.userData.at ? fade : 0; l.visible = chart.visible; }
+  // EAC lift: hook down at the stack's foot, lift above the stack, set it on top.
+  const e = clamp01((k - 0.65) / 0.28);
+  eacBlock.visible = chart.visible && k > 0.65;
+  if (!eacBlock.visible) return false;
+  const foot = new THREE.Vector3(AC_POS.x + 8, 0, AC_POS.z + 9), top = new THREE.Vector3(AC_POS.x, AC_TOP, AC_POS.z);
+  const clear = AC_TOP + EAC_H + 6;
+  let p, y;
+  if (e < 0.35) { p = foot; y = THREE.MathUtils.lerp(EAC_H / 2 + 0.2, clear, smooth(e / 0.35)); }
+  else if (e < 0.7) { p = foot.clone().lerp(top, smooth((e - 0.35) / 0.35)); y = clear; }
+  else { p = top; y = THREE.MathUtils.lerp(clear, AC_TOP + EAC_H / 2 + 0.05, smooth((e - 0.7) / 0.3)); }
+  eacBlock.position.set(p.x, y, p.z);
+  CU.point(new THREE.Vector3(p.x, 0, p.z), y + EAC_H / 2 + 1.2);
+  return true;
+}
+
+const CHART_TGT = new THREE.Vector3(-24, 25, 6), CHART_DIR = new THREE.Vector3(0, 6, 134).normalize(), CHART_SIZE = { w: 46, h: 52 };
+const CHART_CAM = new THREE.Vector3();
+// Camera distance that fits the chart: by its height, and by the free width (on the landing page the caption takes the left third).
+function fitChartCam() {
+  const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const free = EMBED && camera.aspect > 1.2 ? 0.64 : 0.92;
+  const d = Math.max(CHART_SIZE.h / 2 / t / 0.9, CHART_SIZE.w / 2 / (t * camera.aspect) / free);
+  CHART_CAM.copy(CHART_TGT).addScaledVector(CHART_DIR, d);
+  sheet.place(camera, CHART_TGT, CHART_DIR, d);
+}
+// Engineering drawing sheet behind the chart.
+const sheet = createSheet('tower');
+scene.add(sheet.mesh);
+let home = null;
+function moveCamera(cam) {
+  if (cam > 0 && !home) { home = { p: camera.position.clone(), t: controls.target.clone() }; controls.enabled = false; fitChartCam(); }
+  if (!home) return;
+  camera.position.lerpVectors(home.p, CHART_CAM, smooth(cam));
+  controls.target.lerpVectors(home.t, CHART_TGT, smooth(cam));
+  camera.lookAt(controls.target);
+  if (cam <= 0) { camera.position.copy(home.p); controls.target.copy(home.t); home = null; controls.enabled = true; }
+}
+const evmText = () => `<b>Ölçüm · kat ${builtAtToday} / ${FLOORS}</b> · kazanılan %${Math.round(SCN.ev)}, harcanan %${Math.round(SCN.ac)} → CPI ${fmt(SCN.cpi)}: kazanılan her 100 birim iş için ${Math.round(100 / SCN.cpi)} birim harcanıyor. Bu gidişle EAC bütçenin %${Math.round(SCN.eac)}'u. Janus: sapmayı kalem bazında incelemenizi öneriyor.`;
+
+// ------------------------------------------------------------------ loop
+let progress = 0, playing = !EMBED;
+const range = document.getElementById('prog');
+const playBtn = document.getElementById('play');
+range.addEventListener('input', () => { progress = range.value / 1000; });
+playBtn.onclick = () => {
+  playing = !playing;
+  playBtn.textContent = playing ? '❚❚' : '▶';
+  playBtn.setAttribute('aria-pressed', playing);
+};
+function syncSize() {
+  const cv = renderer.domElement;
+  if (cv.clientWidth === innerWidth && cv.clientHeight === innerHeight) return;
+  camera.aspect = innerWidth / Math.max(innerHeight, 1);
+  camera.fov = camera.aspect < 1 ? 50 : 32;
+  // Embedded on a wide screen: shift the picture right so the caption panel on the left does not cover it.
+  if (EMBED && camera.aspect > 1.2) camera.setViewOffset(innerWidth, innerHeight, -innerWidth * 0.16, 0, innerWidth, innerHeight);
+  else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
+  backdrop.resize(camera.aspect);
+}
+const clock = new THREE.Clock();
+let simT = 0;
+// Compile every material once up front (also the ones that are still hidden, e.g. the chart), so nothing compiles mid-animation.
+// Draw it once with everything shown, so geometry and textures are on the GPU before the scene is visible.
+{ const hid = [], cull = []; scene.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; } if (o.frustumCulled) { cull.push(o); o.frustumCulled = false; } });
+  renderer.compile(scene, camera); renderer.render(scene, camera);
+  hid.forEach(o => { o.visible = false; }); cull.forEach(o => { o.frustumCulled = true; }); }
+let lastPhase = '', warm = 0;
+renderer.setAnimationLoop(() => {
+  if (window.__hidden && warm > 2) { clock.getDelta(); return; }
+  warm++;
+  syncSize();
+  const dt = Math.min(clock.getDelta(), 0.1);
+  if (playing) {
+    progress = progress >= 1 ? 0 : Math.min(1, progress + dt / 60);
+    range.value = Math.round(progress * 1000);
+  }
+  const st = stage(progress);
+  const sdt = st.evm ? 0 : dt;
+  simT += sdt;
+  update(st.c, simT);
+  flyFloors(st.fly);
+  fadeSite(1 - 0.92 * st.fade);
+  sheet.set(0.9 * st.fade);
+  renderer.shadowMap.autoUpdate = st.fade < 0.3; // (toggling sun.castShadow would recompile every shader)
+  setChart(st.k, st.chartFade);
+  moveCamera(st.cam);
+  if (st.evm && st.k > 0.6) { const h = evmText(); if (h !== lastPhase) document.getElementById('phase').innerHTML = lastPhase = h; }
+  document.getElementById('pct').textContent = Math.round(progress * 100) + '%';
+  document.getElementById('note').style.opacity = st.chartFade > 0.5 ? 1 : 0;
+  mixers.forEach(m => m.update(sdt));
+  for (const s of spinners) {
+    if (s.swing) s.obj.rotation[s.axis] = s.swing[0] + Math.sin(simT * s.speed) * s.swing[1];
+    else s.obj.rotation[s.axis] += s.speed * sdt;
+  }
+  if (controls.enabled) controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+});
+Object.assign(window, { __ready: true, THREE, camera, controls, crane, setProgress: v => { progress = v; playing = false; range.value = Math.round(v * 1000); } });
+</script>
+</body>
+</html>
