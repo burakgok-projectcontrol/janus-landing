@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://burakgok-projectcontrol.github.io/janus-landing/sitemap.xml

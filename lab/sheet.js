@@ -32,7 +32,7 @@ function base(ctx, kind) {
   for (let i = 0; i < 4; i++) { const y = 56 + ((H - 112) * (i + 0.5)) / 4 + 8; ctx.fillText('ABCD'[i], 48, y); ctx.fillText('ABCD'[i], W - 48, y); }
   // Title block.
   const tw = 640, th = 200, tx = W - 56 - tw, ty = H - 56 - th;
-  ctx.fillStyle = 'rgba(10, 31, 68, 0.6)';
+  ctx.fillStyle = 'rgba(7, 17, 31, 0.6)';
   ctx.fillRect(tx, ty, tw, th);
   ctx.strokeStyle = INK(0.7);
   ctx.lineWidth = 2;
@@ -243,7 +243,8 @@ export function createSheet(kind) {
     const h = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * d * 1.06;
     const w = h * camera.aspect * 1.4; // extra width: the landing page shifts the view sideways
     const width = Math.round(Math.min(4096, Math.max(1600, (H * w) / h)));
-    if (width !== canvas.width) { draw(width); tex.needsUpdate = true; }
+    // A new size needs a new GPU texture (the old storage keeps its size): dispose, then upload again.
+    if (width !== canvas.width) { draw(width); tex.dispose(); tex.needsUpdate = true; }
     mesh.scale.set(w, h, 1);
     mesh.position.copy(target).addScaledVector(dir, -back);
     mesh.lookAt(mesh.position.clone().add(dir));
@@ -271,9 +272,10 @@ export function createBackdrop(kind) {
     last = width;
     W = canvas.width = width;
     canvas.height = H;
-    ctx.fillStyle = '#0a1f44';
+    ctx.fillStyle = '#07111F';
     ctx.fillRect(0, 0, W, H);
     base(ctx, BACKDROP[kind]);
+    texture.dispose(); // new size: let three.js allocate a new GPU texture
     texture.needsUpdate = true;
   }
   resize(innerWidth / Math.max(innerHeight, 1));
