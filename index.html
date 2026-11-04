@@ -199,6 +199,18 @@
   footer { padding: 32px 0 40px; color: var(--muted); font-size: .85rem; border-top: 1px solid var(--line); }
   footer p { margin: 6px 0; }
   footer a { color: var(--muted); }
+  .foot { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 22px 40px; }
+  .foot-brand { display: flex; align-items: center; gap: 12px; }
+  .foot-brand b { display: block; color: var(--text); font-size: 1.1rem; }
+  .foot-brand span { font-size: .85rem; }
+  .foot-contact { text-align: right; }
+  .foot-label { display: block; color: var(--cyan); font-size: .72rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 4px; }
+  footer a.mail { color: var(--text); font-size: 1.1rem; font-weight: 600; text-decoration: none; border-bottom: 1px solid var(--line); }
+  footer a.mail:hover { border-color: var(--cyan); }
+  .foot-small { grid-column: 1 / -1; margin: 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: .78rem; }
+  .cta-mail { margin: 18px 0 0; color: var(--muted); font-size: .95rem; }
+  .cta-mail a { color: var(--text); }
+  @media (max-width: 600px) { .foot { grid-template-columns: 1fr; } .foot-contact { text-align: left; } }
   @media (max-width: 860px) {
     .grid, .two { grid-template-columns: 1fr; }
     .rail { display: none; }
@@ -437,13 +449,21 @@
         <h2 class="big" style="margin-inline:auto">Projelerinizde birlikte bakalım.</h2>
         <p class="sub">Janus'u kendi proje verinizin yapısına göre gösterelim. Şirketiniz, rolünüz ve proje türünüz kısaca yeterli.</p>
         <a class="btn" href="mailto:diprojectcontrol@gmail.com?subject=Janus%20demo%20talebi">Demo talep et</a>
+        <p class="cta-mail">veya doğrudan yazın: <a href="mailto:diprojectcontrol@gmail.com">diprojectcontrol@gmail.com</a></p>
       </div>
     </section>
 
     <footer>
-      <div class="wrap">
-                <p>Animasyonlardaki proje değerleri temsilîdir (örnek senaryo).</p>
-        <p>3D modeller: Bulldozer — Poly by Google (<a href="https://poly.pizza/m/ddxtaegI3HQ">poly.pizza</a>, CC BY 3.0) · Boeing 747 — Miha Lunar (<a href="https://poly.pizza/m/49CLof4tP2V">poly.pizza</a>, CC BY 3.0) · Worker — Quaternius (<a href="https://poly.pizza/m/E8079Ahx7k">poly.pizza</a>, CC BY 3.0; <a href="https://poly.pizza/m/Yg2bQZO6Hj">CC0</a>) · Excavator (<a href="https://opengameart.org/content/excavator">OpenGameArt</a>, CC0). Diğer makineler ve sahneler bu site için kodla üretildi. 3D motor: three.js (MIT).</p>
+      <div class="wrap foot">
+        <div class="foot-brand">
+          <svg width="34" height="34" viewBox="0 0 120 120" aria-hidden="true"><path d="M50 16A44 44 0 0 0 50 104" fill="none" stroke="#e6edf7" stroke-width="13" stroke-linecap="round"/><path d="M70 16A44 44 0 0 1 70 104" fill="none" stroke="url(#fut)" stroke-width="13" stroke-linecap="round"/><circle cx="60" cy="60" r="10" fill="#ecfeff"/></svg>
+          <div><b>Janus</b><span>İnşaat için proje kontrol platformu</span></div>
+        </div>
+        <div class="foot-contact">
+          <span class="foot-label">İletişim</span>
+          <a class="mail" href="mailto:diprojectcontrol@gmail.com">diprojectcontrol@gmail.com</a>
+        </div>
+        <p class="foot-small">Animasyonlardaki proje değerleri temsilîdir (örnek senaryo). · <a href="lisanslar.html">Lisanslar</a></p>
       </div>
     </footer>
   </div>
