@@ -1,22 +1,6 @@
 <!doctype html>
 <html lang="tr" class="story">
 <head>
-<!-- The first 3D scene is only started after the opening animation (its start-up would stall it);
-     its files are fetched in the meantime so it starts quickly. Fetching does not block the page. -->
-<link rel="prefetch" href="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" crossorigin>
-<link rel="prefetch" href="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js" crossorigin>
-<link rel="prefetch" href="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js" crossorigin>
-<link rel="prefetch" href="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/SkeletonUtils.js" crossorigin>
-<link rel="prefetch" href="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js" crossorigin>
-<link rel="prefetch" href="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/renderers/CSS2DRenderer.js" crossorigin>
-<link rel="prefetch" href="lab/dam.html?embed">
-<link rel="prefetch" href="lab/models/bulldozer-a.glb">
-<link rel="prefetch" href="lab/models/excavator.glb">
-<link rel="prefetch" href="lab/models/worker-a.glb">
-<link rel="prefetch" href="lab/models/worker-b.glb">
-<link rel="prefetch" href="lab/airport.html?embed">
-<link rel="prefetch" href="lab/models/boeing-747.glb">
-<link rel="prefetch" href="lab/tower.html?embed">
 <meta charset="utf-8">
 <script>
 // Language: ?lang= link, then the saved choice, then the browser language (English browsers get English).
@@ -415,7 +399,7 @@
 
 <!-- Captions: data-scene, data-from, data-to (scene progress 0..1). -->
 <div class="captions" id="captions">
-  <div class="cap hero-cap" data-scene="0" data-from="-1" data-to="0.3">
+  <div class="cap hero-cap on" data-scene="0" data-from="-1" data-to="0.3">
     <p class="eyebrow" data-en="Project control platform for construction">İnşaat projeleri için proje kontrol platformu</p>
     <h1 data-en="Measure the Past,&lt;br&gt;&lt;span class=&quot;grad&quot;&gt;Manage the Future&lt;/span&gt;">Geçmişi Ölç,<br><span class="grad">Geleceği Yönet</span></h1>
     <p class="lede" data-en="JANUS brings work items, cost and schedule into one model. Project control teams see variances without waiting for the month-end report.">JANUS; iş kalemlerini, maliyeti ve takvimi tek modelde birleştirir. Proje kontrol ekipleri, sapmayı ay sonu raporunu beklemeden görür.</p>
@@ -1045,6 +1029,34 @@
     } finally { clearTimeout(timer); send.disabled = false; }
   });
 })();
+</script>
+<script>
+// The first 3D scene starts only after the opening animation (its start-up would stall it). Its files are prefetched
+// once the page has loaded, during the opening, so the scene starts quickly without delaying the first paint.
+addEventListener('load', () => {
+  for (const href of [
+    'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js',
+    'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js',
+    'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js',
+    'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/SkeletonUtils.js',
+    'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js',
+    'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/renderers/CSS2DRenderer.js',
+    'lab/dam.html?embed',
+    'lab/models/bulldozer-a.glb',
+    'lab/models/excavator.glb',
+    'lab/models/worker-a.glb',
+    'lab/models/worker-b.glb',
+    'lab/airport.html?embed',
+    'lab/models/boeing-747.glb',
+    'lab/tower.html?embed',
+  ]) {
+    const l = document.createElement('link');
+    l.rel = 'prefetch';
+    l.href = href;
+    if (href.startsWith('https:')) l.crossOrigin = 'anonymous';
+    document.head.appendChild(l);
+  }
+});
 </script>
 </body>
 </html>
