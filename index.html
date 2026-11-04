@@ -1032,8 +1032,9 @@
 </script>
 <script>
 // The first 3D scene starts only after the opening animation (its start-up would stall it). Its files are prefetched
-// once the page has loaded, during the opening, so the scene starts quickly without delaying the first paint.
-addEventListener('load', () => {
+// 2.5 s after the page has loaded, during the opening (7.6 s), so the scene starts quickly without competing with the
+// first paint on slow phones.
+addEventListener('load', () => setTimeout(() => {
   for (const href of [
     'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js',
     'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js',
@@ -1056,7 +1057,7 @@ addEventListener('load', () => {
     if (href.startsWith('https:')) l.crossOrigin = 'anonymous';
     document.head.appendChild(l);
   }
-});
+}, 2500));
 </script>
 </body>
 </html>
