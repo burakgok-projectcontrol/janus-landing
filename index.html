@@ -130,8 +130,8 @@
   .glow:hover::after, .glow:focus-visible::after { background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgba(251, 191, 36, .16), transparent 45%); }
   .glow:hover .ico, .glow:focus-visible .ico { color: #fcd34d; border-color: rgba(251, 191, 36, .5); background: rgba(251, 191, 36, .12); }
   .cap:not(.hero-cap) { transition: opacity .45s ease, transform .45s ease, border-color .35s, background .35s, box-shadow .35s; }
-  .cap:not(.hero-cap):hover { border-color: rgba(251, 191, 36, .75); background: linear-gradient(rgba(251, 191, 36, .08), rgba(251, 191, 36, .08)), rgba(13, 37, 82, .6); box-shadow: 0 0 0 1px rgba(251, 191, 36, .22), 0 18px 50px -18px rgba(251, 191, 36, .5); }
-  .cap:not(.hero-cap):hover .eyebrow { color: #fbbf24; }
+  .cap:not(.hero-cap) { border-color: rgba(251, 191, 36, .75); background: linear-gradient(rgba(251, 191, 36, .08), rgba(251, 191, 36, .08)), rgba(13, 37, 82, .6); box-shadow: 0 0 0 1px rgba(251, 191, 36, .22), 0 18px 50px -18px rgba(251, 191, 36, .5); }
+  .cap:not(.hero-cap) .eyebrow { color: #fbbf24; } /* story cards stay lit in amber; content cards light up on hover */
   .ico { transition: color .35s, border-color .35s, background .35s; }
   .card .ico { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; margin-bottom: 12px; background: linear-gradient(135deg, rgba(34, 211, 238, .2), rgba(124, 58, 237, .25)); border: 1px solid var(--line); color: #a5f3fc; }
   .card.pick { cursor: pointer; }
@@ -201,6 +201,9 @@
   @keyframes headsOut { to { opacity: .12; } }
   @keyframes pulse { 50% { transform: scale(1.35); } }
   @media (prefers-reduced-motion: reduce) { #intro *, #intro::before { animation-duration: .01s !important; animation-delay: 0s !important; } }
+  #intro.quick *, #intro.quick::before { animation-duration: .01s !important; animation-delay: 0s !important; } /* reload: jump to the last frame */
+  #intro.quick .core { animation: fadeIn .01s forwards !important; }
+  #intro.quick .skipnote { display: none; }
   .why { display: grid; grid-template-columns: auto 1fr; gap: 40px; align-items: center; }
   .why blockquote { margin: 0; font-size: 1.15rem; line-height: 1.7; color: var(--text); max-width: 62ch; }
   @media (max-width: 860px) { .why { grid-template-columns: 1fr; } }
@@ -708,6 +711,11 @@
   if (!intro) return;
   window.__intro = true;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // The full opening plays once per browser session; on a reload it shows its last frame (the logo) only
+  // while the first scene starts up.
+  let seen = false;
+  try { seen = sessionStorage.getItem('janus-intro') === '1'; sessionStorage.setItem('janus-intro', '1'); } catch (e) { /* storage blocked: always play */ }
+  if (seen) intro.classList.add('quick');
   let done = false;
   // At the end the picture holds still while the first scene starts up behind it, then fades out.
   function finish() {
@@ -726,7 +734,7 @@
       setTimeout(() => { intro.remove(); window.__intro = false; window.__startStory && window.__startStory(); }, 800);
     })();
   }
-  setTimeout(finish, reduced ? 1600 : 7600);
+  setTimeout(finish, seen ? 400 : reduced ? 1600 : 7600);
   const skip = e => { if (e.type === 'wheel') e.preventDefault(); finish(); };
   intro.addEventListener('click', skip);
   addEventListener('wheel', e => { if (window.__intro) skip(e); }, { passive: false });
