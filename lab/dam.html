@@ -16,19 +16,6 @@
   .pct { font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; font-weight: 600; }
   input[type=range] { width: 100%; accent-color: #35C7E8; }
   .labels-layer { position: fixed; inset: 0; pointer-events: none; z-index: 1; }
-  .evm-label { font: 600 12px/1.2 system-ui, sans-serif; color: #e6edf7; white-space: nowrap; transition: opacity .35s; text-shadow: 0 1px 6px #07111F; }
-  .evm-label.pv { color: #8FDCF0; }
-  .evm-label.ev, .evm-label.fc { color: #67e8f9; }
-  .evm-label.ac { color: #fcd34d; }
-  .evm-label.axis { color: #9fc3ef; font-weight: 500; font-size: 11px; }
-  .evm-label.today { color: #fff; }
-  .evm-label.kpi { background: rgba(7, 17, 31, .85); border: 1px solid #35C7E8; border-radius: 10px; padding: 8px 12px; font-size: 13px; }
-  .evm-label.kpi b { font-size: 22px; margin-left: 6px; color: #67e8f9; }
-  .evm-label.kpi span { display: block; font-weight: 400; font-size: 11px; color: #9fb0c9; margin-top: 2px; }
-  @media (max-width: 600px) {
-    .evm-label { font-size: 10px; } .evm-label.axis { font-size: 9px; }
-    .evm-label.kpi { padding: 5px 8px; font-size: 11px; border-radius: 8px; } .evm-label.kpi b { font-size: 16px; } .evm-label.kpi span { font-size: 9px; }
-  }
   .note { position: fixed; top: 60px; left: 12px; font-size: 12px; color: #9fb0c9; z-index: 2; opacity: 0; transition: opacity .4s; }
   .embed .top, .embed .bar { display: none; }
   .embed .note { top: auto; bottom: 14px; left: auto; right: 16px; }
@@ -209,6 +196,7 @@ if (CINE) {
   ripples = rippleNormals();
   Object.assign(M.water[2], { normalMap: ripples, normalScale: new THREE.Vector2(0.18, 0.18), roughness: 0.12, metalness: 0.25 });
 }
+M.settle = M.active.map(m => m.clone());
 const IDX = { orig: 0, maq: 1, bp: 2 };
 let MODE = 'bp';
 function mesh(geo, key) {
@@ -480,7 +468,7 @@ const SC = scenario();
 const CH = { x: 34, y0: 4, height: 24, z0: 26, z1: -26 };
 const chart = createEvmChart(SC, {
   origin: new THREE.Vector3(CH.x, CH.y0, CH.z0), axis: new THREE.Vector3(0, 0, Math.sign(CH.z1 - CH.z0)), len: Math.abs(CH.z1 - CH.z0), height: CH.height,
-  kpis: [{ name: 'SPI', value: fmt(SC.spi), sub: t('takvim performansı', 'schedule performance') }, { name: 'CPI', value: fmt(SC.cpi), sub: t('maliyet performansı', 'cost performance') }],
+  kpis: [{ name: 'SPI', value: fmt(SC.spi), sub: t('takvim performansı', 'schedule performance'), tone: 'good' }, { name: 'CPI', value: fmt(SC.cpi), sub: t('maliyet performansı', 'cost performance'), tone: 'good' }],
 });
 scene.add(chart.group);
 // Camera framing for the chart: looking upstream at the chart, the dam behind it.
@@ -534,27 +522,38 @@ function stage(P) {
   return { c: C_TODAY + ((1 - C_TODAY) * (P - T.evmOut)) / (1 - T.evmOut), cam: 0, fade: 0, fly: 0, k: 0, chartFade: 0, evm: false };
 }
 
-// Built lifts fly (staggered, on an arc) into the monthly columns and dissolve there.
+// Built lifts fly (staggered, on an arc) to the monthly columns: the lifts given to a month stack up into that
+// month's column, bottom lift first, so the dam is visibly rebuilt as the chart. They dissolve into the chart's
+// column once they have landed.
 function flyLifts(fly) {
   const built = lifts.filter(m => m.visible);
   const nCols = chart.cols.length;
+  const colOf = i => Math.min(nCols - 1, Math.floor((i * nCols) / built.length));
+  const perCol = new Array(nCols).fill(0);
+  built.forEach((m, i) => perCol[colOf(i)]++);
+  const seen = new Array(nCols).fill(0);
   built.forEach((m, i) => {
     const y0 = lifts.indexOf(m) * LIFT;
-    const fi = smooth(clamp01(fly * 1.7 - (i / built.length) * 0.7));
+    const fi = smooth(clamp01(fly * 1.6 - (i / built.length) * 0.6));
+    const c = colOf(i), j = seen[c]++;
     m.position.set(0, y0, 0);
+    m.rotation.y = 0;
     m.scale.x = m.scale.z = 1;
     m.castShadow = fi <= 0;
     if (fi <= 0) return;
-    const col = chart.cols[Math.min(nCols - 1, Math.floor((i * nCols) / built.length))];
+    const col = chart.cols[c];
+    const seg = col.userData.h / perCol[c]; // this lift's share of the column height
     const bb = m.geometry.boundingBox;
     const size = bb.getSize(new THREE.Vector3()), ctr = bb.getCenter(new THREE.Vector3());
-    const tScale = new THREE.Vector3(1.4 / size.x, 0.5 / LIFT, 1.6 / size.z);
-    const tTop = col.position.clone().setY(CH.y0 + col.userData.h);
-    const tPos = tTop.sub(new THREE.Vector3(ctr.x * tScale.x, LIFT * tScale.y, ctr.z * tScale.z));
-    m.position.lerp(tPos, fi).add(new THREE.Vector3(0, Math.sin(Math.PI * fi) * 10, 0));
+    const tScale = new THREE.Vector3(1.4 / size.x, Math.max(seg, 0.05) / LIFT, 1.6 / size.z);
+    const tBottom = col.position.clone().setY(CH.y0 + seg * j);
+    const tPos = tBottom.sub(new THREE.Vector3(ctr.x * tScale.x, 0, ctr.z * tScale.z));
+    const arc = 6 + 8 * (1 - i / built.length); // early lifts travel further, so they arc higher
+    m.position.lerp(tPos, fi).add(new THREE.Vector3(0, Math.sin(Math.PI * fi) * arc, 0));
+    m.rotation.y = Math.sin(Math.PI * fi) * 0.18;
     m.scale.set(THREE.MathUtils.lerp(1, tScale.x, fi), THREE.MathUtils.lerp(m.scale.y, tScale.y, fi), THREE.MathUtils.lerp(1, tScale.z, fi));
     m.material = m.userData.fly;
-    m.material.opacity = 0.9 * (1 - smooth(clamp01((fi - 0.8) / 0.2)));
+    m.material.opacity = 0.9 * (1 - smooth(clamp01((fi - 0.86) / 0.14)));
   });
 }
 
@@ -595,13 +594,21 @@ function update(p, t) {
   const h = fillH(p);
   const n = Math.floor(h / LIFT);
   const frac = h / LIFT - n;
+  // The lift placed last settles during the first 35 % of the next one: bright → earth colour, 6 % → 0 % higher.
+  const settleK = p < 0.85 && n > 0 ? clamp01(frac / 0.35) : 1;
   lifts.forEach((m, i) => {
     const active = i === n && frac > 0.001 && p < 0.85;
+    const settling = i === n - 1 && settleK < 1;
     m.visible = i < n || active || (i === n && p >= 0.85);
-    const s = active ? frac : 1;
-    m.scale.y = s;
-    m.userData.mat = active ? 'active' : m.userData.base;
+    m.scale.y = active ? frac : settling ? 1 + 0.06 * (1 - smooth(settleK)) : 1;
+    m.userData.mat = active ? 'active' : settling ? 'settle' : m.userData.base;
     m.material = M[m.userData.mat][IDX[MODE]];
+    if (settling) {
+      const e = 1 - smooth(settleK), base = M[m.userData.base][IDX[MODE]], hot = M.active[IDX[MODE]];
+      m.material.color.lerpColors(base.color, hot.color, e);
+      m.material.emissive.copy(hot.emissive);
+      m.material.emissiveIntensity = 1.1 * e;
+    }
   });
   crest.visible = p >= 0.86;
 
