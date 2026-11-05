@@ -22,6 +22,8 @@
 <!-- Share and search tags. The address below is the intended canonical one; tools/build-site.sh rewrites it
      (SITE_URL=...) if the site is published somewhere else, so no hosting is assumed in the code. -->
 <link rel="canonical" href="https://burakgok-projectcontrol.github.io/janus-landing/">
+<link rel="preload" href="assets/fonts/space-grotesk-latin-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/space-grotesk-latin-ext-700.woff2" as="font" type="font/woff2" crossorigin>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="JANUS">
 <meta property="og:locale" content="tr_TR">
@@ -41,11 +43,22 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2322d3ee'/%3E%3Cstop offset='1' stop-color='%237c3aed'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='120' height='120' rx='28' fill='url(%23g)'/%3E%3Cpath d='M50 18A42 42 0 0 0 50 102M70 18A42 42 0 0 1 70 102' fill='none' stroke='%23fff' stroke-width='14' stroke-linecap='round'/%3E%3Ccircle cx='60' cy='60' r='11' fill='%23fff'/%3E%3C/svg%3E">
 <style>
   /* Design tokens: colours, type scale, spacing (multiples of 4 px), corner radii. Use these, not raw values. */
+  /* Headline font: Space Grotesk Bold (SIL OFL), self-hosted, Latin + Latin Extended (Turkish letters) as two small files.
+     The fallback face is Arial resized to Space Grotesk's metrics, so the swap does not move the text. */
+  @font-face { font-family: "Space Grotesk"; font-weight: 700; font-style: normal; font-display: swap;
+    src: url(assets/fonts/space-grotesk-latin-700.woff2) format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  @font-face { font-family: "Space Grotesk"; font-weight: 700; font-style: normal; font-display: swap;
+    src: url(assets/fonts/space-grotesk-latin-ext-700.woff2) format("woff2");
+    unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+  @font-face { font-family: "Space Grotesk Fallback"; font-weight: 700; src: local("Arial"), local("Helvetica"), local("Liberation Sans");
+    size-adjust: 100%; ascent-override: 98.3%; descent-override: 29.2%; line-gap-override: 0%; }
   :root {
     --bg: #07111F; --bg2: #111C2B; --card: rgba(17, 28, 43, .9); --line: rgba(165, 214, 255, .22); --line-strong: rgba(165, 214, 255, .4);
-    --text: #F1F5F9; --muted: #A3B0C1; --cyan: #35C7E8; --blue: #3478F6; --amber: #fbbf24; --amber-hi: var(--amber-hi);
-    --neg: #f87171; --neg-hi: var(--neg-hi); --ok: var(--ok);
+    --text: #F1F5F9; --muted: #A3B0C1; --cyan: #35C7E8; --blue: #3478F6; --amber: #fbbf24; --amber-hi: #fcd34d;
+    --neg: #f87171; --neg-hi: #fca5a5; --ok: #86efac;
     --grad: #2B67DB; --grad-hover: #2459C2;
+    --display: "Space Grotesk", "Space Grotesk Fallback", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     --fs-xs: .75rem; --fs-sm: .8125rem; --fs-md: .875rem; --fs-base: 1rem; --fs-lg: 1.125rem; --fs-xl: 1.375rem;
@@ -57,17 +70,29 @@
   html { scroll-behavior: smooth; }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
   body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3 { font-family: var(--display); text-wrap: balance; }
   a { color: inherit; }
   /* Links in running text: a quiet underline that turns cyan on hover. */
   p a, .foot-small a { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; transition: color .2s, text-decoration-color .2s; }
   p a:hover, .foot-small a:hover { color: var(--cyan); text-decoration-color: var(--cyan); }
   :focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; border-radius: var(--r-sm); }
-  .skip { position: absolute; left: -999px; top: 8px; z-index: 50; background: var(--bg2); padding: 8px 14px; border-radius: var(--r); }
-  .skip:focus { left: 8px; }
+  /* Always-visible way out of the story (bottom right; top left on phones, under the header). Hidden once the content
+     is reached, but still the first stop for the keyboard. */
+  .skip { position: fixed; right: 24px; bottom: 22px; z-index: 8; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+    border-radius: var(--r-sm); border: 1px solid var(--line); background: rgba(7, 17, 31, .78); color: var(--muted);
+    font: 600 var(--fs-sm)/1 var(--sans); text-decoration: none; white-space: nowrap; transition: color .2s, border-color .2s, opacity .35s; }
+  .skip:hover { color: var(--text); border-color: var(--line-strong); }
+  html:not(.story) .skip:not(:focus-visible) { opacity: 0; pointer-events: none; }
+  @media (max-width: 700px) { .skip { right: auto; left: 16px; bottom: auto; top: 62px; padding: 9px 12px; } }
+  #urun:focus { outline: none; } /* focus target of the skip link, not a control */
   html.en-pending #captions { visibility: hidden; }
 
   /* Stage: the 3D scenes live in fixed, full-screen frames behind the scrolling content. */
   .stage { position: fixed; inset: 0; z-index: 0; background: var(--bg); }
+  /* Hand-over to the content: while .after rises over the stage the stage sinks back and darkens (--hs, --ho are set from
+     the scroll position, only on wide enough motion settings), and the curves on the content's top edge are drawn (--hand). */
+  .stage { transform: scale(var(--hs, 1)); transform-origin: 50% 40%; }
+  .stage::after { content: ""; position: absolute; inset: 0; z-index: 5; background: var(--bg); opacity: var(--ho, 0); pointer-events: none; }
   .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity .25s linear; pointer-events: none; }
   .loading { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); font-size: 14px; z-index: 1; transition: opacity .4s; }
 
@@ -274,6 +299,13 @@
     background-size: 32px 32px, 32px 32px, 160px 160px, 160px 160px; transform: translate3d(0, var(--par, 0px), 0); will-change: transform; }
   /* The grid moves with the scroll at a slower rate (set by script on wide screens; none with reduced motion). */
   .after > * { position: relative; }
+  .after > .hand { position: absolute; top: 0; left: 0; width: 100%; height: 84px; pointer-events: none; z-index: 0; overflow: visible;
+    clip-path: inset(0 calc((1 - var(--hand, 1)) * 100%) 0 0); }
+  .hand path { fill: none; stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .hand .pv { stroke: rgba(230, 237, 247, .45); stroke-dasharray: 7 7; }
+  .hand .ev { stroke: var(--cyan); opacity: .8; }
+  .hand .ac { stroke: var(--amber); opacity: .7; }
+  @media (max-width: 860px) { .after > .hand { height: 56px; } }
   /* Pointer on a card: the border turns amber and the card takes a light amber tint. No spotlight, lift or glow. */
   .glow { transition: border-color .25s, background .25s; }
   .glow:hover, .glow:focus-visible { border-color: rgba(251, 191, 36, .6); background: rgba(251, 191, 36, .05); }
@@ -286,7 +318,7 @@
   .card.pick { cursor: pointer; }
   .reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s ease, transform .6s ease; transition-delay: var(--d, 0s); }
   .reveal.in { opacity: 1; transform: none; }
-  @media (prefers-reduced-motion: reduce) { .after::before { animation: none; } .reveal { opacity: 1; transform: none; } .glow, .btn, .btn.go::after { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .after::before { animation: none; } .reveal, .why-side.reveal { opacity: 1; transform: none; } .lay-fig.reveal .lay { opacity: 1; transform: none; transition: none; } .glow, .btn, .btn.go::after { transition: none; } }
 
   /* Product screens: tabs switch one large, flat screenshot; a click opens it at full size. */
   /* Wider than the text column on large screens (up to 1280 px), so the screens stay readable. */
@@ -449,9 +481,50 @@
   #intro.quick *, #intro.quick::before, #intro.quick::after { animation-duration: .01s !important; animation-delay: 0s !important; } /* reload: jump to the last frame */
   #intro.quick .core { animation: fadeIn .01s forwards !important; }
   #intro.quick .skipnote { display: none; }
-  .why { display: grid; grid-template-columns: auto 1fr; gap: var(--s-7); align-items: center; }
-  .why blockquote { margin: 0; font-size: var(--fs-lg); line-height: 1.7; color: var(--text); max-width: 62ch; }
-  @media (max-width: 860px) { .why { grid-template-columns: 1fr; } }
+  /* Security: three nested layers around the data (company, role, audit), with the same copy as a numbered list. */
+  .lay-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: var(--s-8); align-items: center; margin-top: var(--s-7); }
+  .lay-fig { display: block; width: 100%; height: auto; color: var(--cyan); overflow: visible; }
+  .lay-fig .lay { fill: rgba(53, 199, 232, .04); stroke: var(--line-strong); stroke-width: 1.5; transition: fill .35s, stroke .35s; transform-box: fill-box; transform-origin: center; }
+  .lay-fig .lay-tags text { font: 600 11px var(--mono); letter-spacing: .12em; fill: var(--muted); }
+  .lay-fig .lay-core { opacity: .9; }
+  .lay-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-5); }
+  .lay-list li { display: grid; grid-template-columns: auto 1fr; gap: var(--s-4); padding: var(--s-4) 0 var(--s-4) var(--s-4); border-left: 2px solid var(--line); transition: border-color .35s, background .35s; }
+  .lay-list .num { font: 600 var(--fs-sm)/1.6 var(--mono); letter-spacing: .12em; color: var(--cyan); }
+  .lay-list h3 { margin: 0 0 var(--s-2); font-size: var(--fs-xl); line-height: 1.2; }
+  .lay-list p { margin: 0; color: var(--muted); max-width: 42ch; }
+  .lay-list li:hover { border-left-color: var(--amber); background: rgba(251, 191, 36, .05); }
+  .sec-lay:has(li[data-lay="1"]:hover) .l1, .sec-lay:has(li[data-lay="2"]:hover) .l2, .sec-lay:has(li[data-lay="3"]:hover) .l3 { stroke: var(--amber); fill: rgba(251, 191, 36, .08); }
+  .lay-fig.reveal .lay { opacity: 0; transform: scale(.92); transition: opacity .7s ease, transform .7s ease, fill .35s, stroke .35s; }
+  .lay-fig.reveal.in .lay { opacity: 1; transform: none; }
+  .lay-fig.reveal .l2 { transition-delay: .15s, .15s, 0s, 0s; }
+  .lay-fig.reveal .l3 { transition-delay: .3s, .3s, 0s, 0s; }
+  @media (max-width: 860px) { .lay-grid { grid-template-columns: 1fr; gap: var(--s-6); } .lay-fig { max-width: 420px; } .lay-list h3 { font-size: var(--fs-lg); } }
+  /* "Neden Janus?": the two faces. Past on the left (light, like the ring's left half), future on the right (cyan). */
+  .why-sec .wrap { text-align: center; }
+  .why-sec .eyebrow { justify-content: center; }
+  .why-lead { margin: 0 auto; font-size: var(--fs-xl); line-height: 1.5; max-width: 42ch; color: rgba(241, 245, 249, .9); }
+  .why-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--s-8); align-items: center; margin: var(--s-8) 0; }
+  .why-ring { display: block; width: 180px; height: 180px; }
+  .why-side .tag { display: block; margin-bottom: var(--s-3); font: 600 var(--fs-xs)/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .why-side h3 { margin: 0 0 var(--s-3); font-size: var(--fs-hero); line-height: 1; letter-spacing: -.02em; }
+  .why-side p { margin: 0; font-size: var(--fs-lg); line-height: 1.5; max-width: 24ch; }
+  .why-side.past { text-align: right; justify-self: end; }
+  .why-side.past h3 { color: #e6edf7; }
+  .why-side.fut h3 { color: var(--cyan); }
+  .why-side.past.reveal { transform: translateX(-28px); }
+  .why-side.fut.reveal { transform: translateX(28px); }
+  .why-side.past.reveal.in, .why-side.fut.reveal.in { transform: none; }
+  .why-close { margin: 0 auto; max-width: 30ch; font: 700 var(--fs-2xl)/1.3 var(--display); letter-spacing: -.01em; }
+  @media (max-width: 860px) {
+    .why-grid { grid-template-columns: 1fr; gap: var(--s-6); margin: var(--s-7) 0; }
+    .why-ring { width: 110px; height: 110px; order: -1; }
+    .why-sec .wrap { text-align: left; }
+    .why-lead { font-size: var(--fs-lg); margin: 0; }
+    .why-close { margin: 0; }
+    .why-ring { margin: 0 auto; }
+    .why-side.past { text-align: left; justify-self: start; }
+    .why-side h3 { font-size: var(--fs-3xl); }
+  }
   footer { padding: var(--s-6) 0 var(--s-7); color: var(--muted); font-size: var(--fs-md); border-top: 1px solid var(--line); }
   footer p { margin: 6px 0; }
   footer a { color: var(--muted); }
@@ -571,7 +644,7 @@
   </svg>
   <span class="skipnote" data-en="Click or scroll to skip">Geçmek için tıklayın veya kaydırın</span>
 </div>
-<a class="skip" href="#urun" id="skip" data-en="Skip the animation, go to content">Animasyonu atla, içeriğe geç</a>
+<a class="skip" href="#urun" id="skip"><span data-en="Skip to content">İçeriğe geç</span><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v15m0 0-6-6m6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
 <header>
   <a class="brand" href="#" aria-label="Janus, sayfa başı" data-en-aria-label="Janus, top of page">
     <svg width="30" height="30" viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="fut" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#35C7E8"/><stop offset="1" stop-color="#3478F6"/></linearGradient></defs><path d="M50 16A44 44 0 0 0 50 104" fill="none" stroke="#e6edf7" stroke-width="13" stroke-linecap="round"/><path d="M70 16A44 44 0 0 1 70 104" fill="none" stroke="url(#fut)" stroke-width="13" stroke-linecap="round"/><circle cx="60" cy="60" r="10" fill="#ecfeff"/></svg>
@@ -592,7 +665,7 @@
   <div class="cap hero-cap on" data-scene="0" data-from="-1" data-to="0.3">
     <p class="eyebrow" data-en="AI-assisted project control platform for construction">Yapay zekâ destekli inşaat proje kontrol platformu</p>
     <h1 data-en="Measure the Past,&lt;br&gt;&lt;span class=&quot;grad&quot;&gt;Manage the Future&lt;/span&gt;">Geçmişi Ölç,<br><span class="grad">Geleceği Yönet</span></h1>
-    <p class="lede" data-en="JANUS brings ERP cost, the schedule and bill-of-quantities (BOQ) items into one model. The system calculates the earned-value indicators; AI interprets the variance, before the month-end report.">JANUS; ERP maliyetini, iş programını ve metraj-keşif (BOQ) kalemlerini tek modelde birleştirir. Kazanılmış değer göstergelerini sistem hesaplar, sapmayı yapay zekâ yorumlar; ay sonu raporunu beklemeden.</p>
+    <p class="lede" data-en="Janus brings ERP costs, the schedule and bill of quantities (BOQ) items into one model. The system calculates the earned value metrics and AI explains the variance, without waiting for the month-end report.">JANUS; ERP maliyetini, iş programını ve metraj-keşif (BOQ) kalemlerini tek modelde birleştirir. Kazanılmış değer göstergelerini sistem hesaplar, sapmayı yapay zekâ yorumlar; ay sonu raporunu beklemeden.</p>
     <div class="hero-cta">
       <a class="btn go" href="#iletisim" data-en="Request a Personal Demo">Kişisel Demo Talep Et</a>
       <a class="btn btn-line" id="explore" href="#urun" data-en="Explore the Platform">Platformu Keşfet</a>
@@ -620,12 +693,12 @@
   <div class="cap" data-scene="0" data-from="0.7501" data-to="1.01">
     <p class="eyebrow" data-en="Dam · completed">Baraj · tamamlandı</p>
     <h2 data-en="Ahead of plan, within budget">Planın önünde, bütçe içinde</h2>
-    <p data-en="The embankment is completed and the reservoir fills. On a project that goes well, Janus shows it with evidence.">Gövde tamamlanır, rezervuar dolar. İyi giden bir projede Janus bunu kanıtlarıyla gösterir.</p>
+    <p data-en="The embankment is completed and the reservoir fills. When a project is going well, Janus shows the evidence.">Gövde tamamlanır, rezervuar dolar. İyi giden bir projede Janus bunu kanıtlarıyla gösterir.</p>
   </div>
   <div class="cap" data-scene="1" data-from="-1" data-to="0.5001">
     <p class="eyebrow" data-en="Airport">Havalimanı</p>
     <h2 data-en="Runway, terminal and tower at once">Pist, terminal ve kule aynı anda</h2>
-    <p data-en="Different work packages progress in parallel. Janus attributes the &lt;b&gt;actual cost of each from the ERP to an activity and a BOQ item&lt;/b&gt;; lines it cannot resolve are not hidden.">Farklı iş kalemleri paralel ilerler. Janus her birinin <b>gerçekleşen maliyetini ERP'den aktiviteye ve BOQ'ya</b> atfeder; çözülemeyen satırı gizlemez.</p>
+    <p data-en="Different work packages progress in parallel. Janus attributes &lt;b&gt;each package&#x27;s actual cost from the ERP to activities and BOQ items&lt;/b&gt;; lines it cannot resolve stay visible.">Farklı iş kalemleri paralel ilerler. Janus her birinin <b>gerçekleşen maliyetini ERP'den aktiviteye ve BOQ'ya</b> atfeder; çözülemeyen satırı gizlemez.</p>
   </div>
   <div class="cap" data-scene="1" data-from="0.5001" data-to="0.7501">
     <p class="eyebrow" data-en="Measurement · Earned Schedule">Ölçüm · Earned Schedule</p>
@@ -634,7 +707,7 @@
   </div>
   <div class="cap" data-scene="1" data-from="0.7501" data-to="1.01">
     <p class="eyebrow" data-en="Airport · opening">Havalimanı · açılış</p>
-    <h2 data-en="A delay seen early can be recovered">Erken görülen gecikme toparlanır</h2>
+    <h2 data-en="A delay caught early can be recovered">Erken görülen gecikme toparlanır</h2>
     <p data-en="The runway is marked, the terminal glazed, and the first aircraft lands.">Pist işaretlenir, terminal camlanır, ilk uçak iner.</p>
   </div>
   <div class="cap" data-scene="2" data-from="-1" data-to="0.5001">
@@ -644,8 +717,8 @@
   </div>
   <div class="cap" data-scene="2" data-from="0.5001" data-to="0.7501">
     <p class="eyebrow" data-en="Measurement · EAC">Ölçüm · EAC</p>
-    <h2 data-en="At this rate, how much?">Bu gidişle ne kadar?</h2>
-    <p data-en="If earned work falls behind what is spent, the estimate at completion (&lt;b&gt;EAC&lt;/b&gt;) exceeds the budget (&lt;b&gt;BAC&lt;/b&gt;). Janus shows this today; the &lt;b&gt;AI report assistant&lt;/b&gt; explains the variance.">Kazanılan iş, harcanandan geride kalırsa tamamlanma maliyeti (<b>EAC</b>) bütçeyi (<b>BAC</b>) aşar. Janus bunu bugünden gösterir; <b>AI rapor asistanı</b> sapmayı yorumlar.</p>
+    <h2 data-en="At this rate, what will it cost?">Bu gidişle ne kadar?</h2>
+    <p data-en="If earned work falls behind what is spent, the estimate at completion (&lt;b&gt;EAC&lt;/b&gt;) exceeds the budget at completion (&lt;b&gt;BAC&lt;/b&gt;). Janus shows this now; the &lt;b&gt;AI report assistant&lt;/b&gt; explains the variance.">Kazanılan iş, harcanandan geride kalırsa tamamlanma maliyeti (<b>EAC</b>) bütçeyi (<b>BAC</b>) aşar. Janus bunu bugünden gösterir; <b>AI rapor asistanı</b> sapmayı yorumlar.</p>
   </div>
   <div class="cap" data-scene="2" data-from="0.7501" data-to="1.01">
     <p class="eyebrow" data-en="Tower · completed">Gökdelen · tamamlandı</p>
@@ -664,11 +737,16 @@
   <div class="spacer" aria-hidden="true"></div>
 
   <div class="after">
-    <section class="sec" id="urun">
+    <svg class="hand" viewBox="0 0 1200 110" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <path class="pv" d="M0 102C380 100 520 18 760 14S1100 8 1200 8" />
+      <path class="ac" d="M0 104C300 103 450 52 640 40S920 30 1010 30" />
+      <path class="ev" d="M0 104C330 104 470 40 700 30S980 22 1100 22" />
+    </svg>
+    <section class="sec" id="urun" tabindex="-1">
       <div class="wrap">
         <p class="eyebrow reveal" data-en="One control model">Tek kontrol modeli</p>
-        <h2 class="big reveal" data-en="Not instead of ERP and planning, but between them.">ERP ve planlamanın yerine değil, arasına.</h2>
-        <p class="sub reveal" data-en="Janus does not replace your ERP or planning software; it links their data in one model. The BOQ is the control object for revenue and the commercial result, the activity for time and cost attribution. Click a card to open its screen below.">Janus ERP'nin veya planlama yazılımının yerine geçmez; onlardan gelen veriyi tek modelde ilişkilendirir. BOQ gelirin ve ticari sonucun, aktivite ise zaman ve maliyet atfının kontrol nesnesidir. Bir karta tıklayın, ilgili ekran aşağıda açılsın.</p>
+        <h2 class="big reveal" data-en="Not a replacement for ERP and planning, but the layer between them.">ERP ve planlamanın yerine değil, arasına.</h2>
+        <p class="sub reveal" data-en="Janus does not replace your ERP or planning software; it links their data in one model. Revenue and the commercial result are controlled on the BOQ item; time and cost are attributed to the activity. Click a card to open its screen below.">Janus ERP'nin veya planlama yazılımının yerine geçmez; onlardan gelen veriyi tek modelde ilişkilendirir. BOQ gelirin ve ticari sonucun, aktivite ise zaman ve maliyet atfının kontrol nesnesidir. Bir karta tıklayın, ilgili ekran aşağıda açılsın.</p>
         <div class="flow reveal" role="group" aria-label="ERP ve planlama verisi JANUS'ta birleşir, çıktısı yönetim kararlarına gider" data-en-aria-label="ERP and planning data meet in JANUS; its output feeds management decisions">
           <button type="button" class="node erp" data-shot="actuals" aria-controls="showPanel"><b>ERP</b><span data-en="Actual cost">Gerçekleşen maliyet</span></button>
           <i class="wire w1" aria-hidden="true"><i></i></i>
@@ -725,7 +803,7 @@
           <ul class="ticks">
             <li class="glow reveal" style="--d:.05s" data-en="&lt;b&gt;Draft first, then approval.&lt;/b&gt; AI suggestions go to a staging area; only what you accept is applied."><b>Önce taslak, sonra onay.</b> AI önerileri bekleme alanına yazılır; kabul ettikleriniz uygulanır.</li>
             <li class="glow reveal" style="--d:.12s" data-en="&lt;b&gt;Data boundary.&lt;/b&gt; AI receives codes, descriptions, units and quantities; unit prices and amounts are not sent by default."><b>Veri sınırı.</b> AI'a kod, tanım, birim ve miktar gider; birim fiyat ve tutar varsayılan olarak gönderilmez.</li>
-            <li class="glow reveal" style="--d:.19s" data-en="&lt;b&gt;Provider-independent.&lt;/b&gt; Each company sets up its own AI connections; without one, the rule-based result still works."><b>Sağlayıcıdan bağımsız.</b> Firma kendi AI bağlantılarını tanımlar; bağlantı yoksa kural tabanlı sonuç çalışır.</li>
+            <li class="glow reveal" style="--d:.19s" data-en="&lt;b&gt;Provider-independent.&lt;/b&gt; Each company sets up its own AI connections; without one, the rule-based results still work."><b>Sağlayıcıdan bağımsız.</b> Firma kendi AI bağlantılarını tanımlar; bağlantı yoksa kural tabanlı sonuç çalışır.</li>
           </ul>
         </div>
         <div class="ai-shot reveal">
@@ -770,30 +848,50 @@
               </div>
             </div>
           </div>
-          <p class="aif-foot" data-en="Sample answer built from the sample project&#x27;s figures. Every number comes from the system; in the period report AI cannot write a digit, the server fills them in.">Örnek proje verisinden kurulmuş örnek yanıt. Her rakam sistemden gelir; dönem raporunda AI rakam yazamaz, rakamları sunucu yerleştirir.</p>
+          <p class="aif-foot" data-en="Sample answer built from the sample project&#x27;s figures. Every number comes from the system; in the period report, AI cannot write a single figure; the server fills them in.">Örnek proje verisinden kurulmuş örnek yanıt. Her rakam sistemden gelir; dönem raporunda AI rakam yazamaz, rakamları sunucu yerleştirir.</p>
         </div>
       </div>
     </section>
 
-    <section class="sec">
+    <section class="sec sec-lay">
       <div class="wrap">
         <p class="eyebrow reveal" data-en="Security">Güvenlik</p>
-        <h2 class="big reveal" data-en="Your data stays your company&#x27;s.">Verileriniz firmanıza özel.</h2>
-        <div class="grid">
-          <article class="card glow reveal" style="--d:.05s"><span class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" /><path d="M9 12l2 2 4-4" /></svg></span><h3 data-en="Company isolation">Firma izolasyonu</h3><p data-en="Each company&#x27;s data is separated in the application and in the database with row-level security (RLS).">Her firmanın verisi uygulamada ve veritabanında satır düzeyi güvenlikle (RLS) ayrılır.</p></article>
-          <article class="card glow reveal" style="--d:.12s"><span class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-8 0v1M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 19v-1a3 3 0 0 0-3-3M17 5a3 3 0 0 1 0 6" /></svg></span><h3 data-en="Role-based permissions">Rol bazlı yetki</h3><p data-en="Screen- and action-level permissions through company roles and project-level exceptions.">Firma rolleri ve proje bazlı istisnalarla ekran ve işlem düzeyinde yetki.</p></article>
-          <article class="card glow reveal" style="--d:.19s"><span class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM9 9h6M9 13h6M9 17h4" /></svg></span><h3 data-en="Audit log">Denetim kaydı</h3><p data-en="Important actions and permission changes are recorded with user and time.">Önemli işlemler ve yetki değişiklikleri kullanıcı ve zamanıyla kayıt altında.</p></article>
+        <h2 class="big reveal" data-en="Your data stays within your company.">Verileriniz firmanıza özel.</h2>
+        <div class="lay-grid">
+          <svg class="lay-fig reveal" viewBox="0 0 440 320" role="img" aria-label="Üç katman: firma izolasyonu, rol bazlı yetki, denetim kaydı" data-en-aria-label="Three layers: company isolation, role-based permissions, audit log">
+            <rect class="lay l1" x="6" y="6" width="428" height="308" rx="6"/>
+            <rect class="lay l2" x="62" y="56" width="316" height="208" rx="6"/>
+            <rect class="lay l3" x="116" y="102" width="208" height="116" rx="6"/>
+            <g class="lay-tags" aria-hidden="true"><text x="18" y="28">01</text><text x="74" y="78">02</text><text x="128" y="124">03</text></g>
+            <g class="lay-core" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="220" cy="140" rx="30" ry="9"/><path d="M190 140v28c0 5 13 9 30 9s30-4 30-9v-28M190 154c0 5 13 9 30 9s30-4 30-9"/></g>
+          </svg>
+          <ol class="lay-list">
+            <li class="reveal" style="--d:0.05s" data-lay="1"><span class="num" aria-hidden="true">01</span><div><h3 data-en="Company isolation">Firma izolasyonu</h3><p data-en="Each company&#x27;s data is separated in the application and in the database with row-level security (RLS).">Her firmanın verisi uygulamada ve veritabanında satır düzeyi güvenlikle (RLS) ayrılır.</p></div></li>
+            <li class="reveal" style="--d:0.15s" data-lay="2"><span class="num" aria-hidden="true">02</span><div><h3 data-en="Role-based permissions">Rol bazlı yetki</h3><p data-en="Screen- and action-level permissions through company roles and project-level exceptions.">Firma rolleri ve proje bazlı istisnalarla ekran ve işlem düzeyinde yetki.</p></div></li>
+            <li class="reveal" style="--d:0.25s" data-lay="3"><span class="num" aria-hidden="true">03</span><div><h3 data-en="Audit log">Denetim kaydı</h3><p data-en="Important actions and permission changes are logged with the user and a timestamp.">Önemli işlemler ve yetki değişiklikleri kullanıcı ve zamanıyla kayıt altında.</p></div></li>
+          </ol>
         </div>
       </div>
     </section>
 
-    <section class="sec">
-      <div class="wrap why">
-        <svg class="reveal" width="150" height="150" viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="wfut" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#35C7E8"/><stop offset="1" stop-color="#3478F6"/></linearGradient><filter id="wglow" x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation="4"/></filter></defs><circle cx="60" cy="60" r="48" fill="none" stroke="#e6edf7" stroke-width=".8" opacity=".18"/><path d="M50 16A44 44 0 0 0 50 104" fill="none" stroke="#e6edf7" stroke-width="9" stroke-linecap="round"/><path d="M70 16A44 44 0 0 1 70 104" fill="none" stroke="url(#wfut)" stroke-width="9" stroke-linecap="round"/><path d="M52 36A26 26 0 0 0 52 84" fill="none" stroke="#e6edf7" stroke-width="2.5" stroke-linecap="round" opacity=".4"/><path d="M68 36A26 26 0 0 1 68 84" fill="none" stroke="#35C7E8" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="3 5" opacity=".7"/><circle cx="60" cy="60" r="10" fill="#35C7E8" filter="url(#wglow)"/><circle cx="60" cy="60" r="5.5" fill="#ecfeff"/></svg>
-        <div>
-          <p class="eyebrow reveal" data-en="Why Janus?">Neden Janus?</p>
-          <blockquote class="reveal" data-en="Janus, the Roman god with one face looking to the past and one to the future, is the symbol of that unique vision. Being at the wheel of project control takes exactly this dynamism: one eye on completed quantities, effort spent and data; the other on the risks ahead and the big goal! In a project that measures the past without interruption and reads tomorrow from today, there is no room for uncertainty.">Roma tanrısı Janus, bir yüzü geçmişe bir yüzü geleceğe bakan o eşsiz vizyonun simgesidir. Proje kontrolünün direksiyonunda olmak da tam olarak bu dinamizmi gerektirir: Bir gözünüz tamamlanan metrajlarda, harcanan emekte ve veride; diğer gözünüz ise rotadaki risklerde ve büyük hedefte! Geçmişi kesintisiz ölçen ve yarını bugünden okuyan bir projede, belirsizliklere yer kalmaz.</blockquote>
+    <section class="sec why-sec">
+      <div class="wrap">
+        <p class="eyebrow reveal" data-en="Why Janus?">Neden Janus?</p>
+        <p class="why-lead reveal" data-en="Janus, the Roman god with one face looking to the past and one to the future, stands for exactly this vision. Being at the wheel of project control takes the same dynamism:">Roma tanrısı Janus, bir yüzü geçmişe bir yüzü geleceğe bakan o eşsiz vizyonun simgesidir. Proje kontrolünün direksiyonunda olmak da tam olarak bu dinamizmi gerektirir:</p>
+        <div class="why-grid">
+          <div class="why-side past reveal">
+            <span class="tag" data-en="One eye">Bir gözünüz</span>
+            <h3 data-en="The past">Geçmiş</h3>
+            <p data-en="on completed quantities, effort spent and data;">tamamlanan metrajlarda, harcanan emekte ve veride;</p>
+          </div>
+          <svg class="why-ring reveal" width="180" height="180" viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="wfut" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#35C7E8"/><stop offset="1" stop-color="#3478F6"/></linearGradient><filter id="wglow" x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation="4"/></filter></defs><circle cx="60" cy="60" r="48" fill="none" stroke="#e6edf7" stroke-width=".8" opacity=".18"/><path d="M50 16A44 44 0 0 0 50 104" fill="none" stroke="#e6edf7" stroke-width="9" stroke-linecap="round"/><path d="M70 16A44 44 0 0 1 70 104" fill="none" stroke="url(#wfut)" stroke-width="9" stroke-linecap="round"/><path d="M52 36A26 26 0 0 0 52 84" fill="none" stroke="#e6edf7" stroke-width="2.5" stroke-linecap="round" opacity=".4"/><path d="M68 36A26 26 0 0 1 68 84" fill="none" stroke="#35C7E8" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="3 5" opacity=".7"/><circle cx="60" cy="60" r="10" fill="#35C7E8" filter="url(#wglow)"/><circle cx="60" cy="60" r="5.5" fill="#ecfeff"/></svg>
+          <div class="why-side fut reveal" style="--d:.12s">
+            <span class="tag" data-en="The other eye">Diğer gözünüz</span>
+            <h3 data-en="The future">Gelecek</h3>
+            <p data-en="on the risks ahead and the big goal!">rotadaki risklerde ve büyük hedefte!</p>
+          </div>
         </div>
+        <p class="why-close reveal" data-en="When a project measures the past continuously and reads tomorrow from today, there is no room for uncertainty.">Geçmişi kesintisiz ölçen ve yarını bugünden okuyan bir projede, belirsizliklere yer kalmaz.</p>
       </div>
     </section>
 
@@ -802,7 +900,7 @@
         <div class="demo-copy">
           <p class="eyebrow" data-en="Personal demo">Kişisel demo</p>
           <h2 class="big" data-en="Let&#x27;s look at your projects together.">Projelerinizde birlikte bakalım.</h2>
-          <p class="sub" data-en="We will show Janus with the structure of your own project data. Your name, company and job title are enough; add a short note if you like.">Janus'u kendi proje verinizin yapısına göre gösterelim. Adınız, şirketiniz ve unvanınız yeterli; isterseniz kısa bir not ekleyin.</p>
+          <p class="sub" data-en="We&#x27;ll show you Janus built around the structure of your own project data. Your name, company and job title are enough; add a short note if you like.">Janus'u kendi proje verinizin yapısına göre gösterelim. Adınız, şirketiniz ve unvanınız yeterli; isterseniz kısa bir not ekleyin.</p>
           <p class="cta-mail" data-en="or write to us directly: &lt;a href=&quot;mailto:diprojectcontrol@gmail.com&quot;&gt;diprojectcontrol@gmail.com&lt;/a&gt;">veya doğrudan yazın: <a href="mailto:diprojectcontrol@gmail.com">diprojectcontrol@gmail.com</a></p>
         </div>
         <form class="demo-form" id="demoForm" novalidate>
@@ -843,7 +941,7 @@
             <button class="btn" type="submit" id="df-send" data-en="Request a Personal Demo">Kişisel Demo Talep Et</button>
           </div>
           <p class="f-status wide" id="df-status" role="status" aria-live="polite"></p>
-          <p class="f-note wide" data-en="* Required.">* Zorunlu alan.</p>
+          <p class="f-note wide" data-en="* Required field.">* Zorunlu alan.</p>
         </form>
       </div>
     </section>
@@ -1027,7 +1125,7 @@
   });
   next.addEventListener('click', forward);
   railBtns.forEach(b => b.addEventListener('click', () => jumpTo(+b.dataset.i)));
-  document.getElementById('skip').addEventListener('click', e => { e.preventDefault(); toContent(); });
+  document.getElementById('skip').addEventListener('click', e => { e.preventDefault(); toContent(); document.getElementById('urun').focus({ preventScroll: true }); });
   document.getElementById('explore').addEventListener('click', e => { e.preventDefault(); toContent(); });
   document.querySelectorAll('a[href="#iletisim"]').forEach(a => a.addEventListener('click', () => { if (mode === 'story') { mode = 'content'; root.classList.remove('story'); } }));
 
@@ -1106,7 +1204,17 @@
   if (!reduced && afterEl) {
     let queued = false;
     const wide = matchMedia('(min-width: 861px)');
-    const paint = () => { queued = false; afterEl.style.setProperty('--par', wide.matches ? `${(scrollY * 0.3) % 160}px` : '0px'); };
+    const stageEl = document.getElementById('stage');
+    const paint = () => {
+      queued = false;
+      afterEl.style.setProperty('--par', wide.matches ? `${(scrollY * 0.3) % 160}px` : '0px');
+      // Hand-over: p goes 0 → 1 while the content's top edge travels from the bottom of the screen to the top.
+      const p = Math.min(1, Math.max(0, 1 - afterEl.getBoundingClientRect().top / innerHeight));
+      stageEl.style.setProperty('--hs', (1 - 0.05 * p).toFixed(4));
+      stageEl.style.setProperty('--ho', (0.7 * p).toFixed(3));
+      afterEl.style.setProperty('--hand', Math.min(1, Math.max(0, (p - 0.15) / 0.7)).toFixed(3));
+    };
+    paint();
     addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(paint); } }, { passive: true });
   }
 })();
